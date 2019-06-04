@@ -1,0 +1,19 @@
+---
+title: 'GR5261 - Statistical Methods in Finance: Stocks Portfolio'
+author: 
+  - Jess Mathew
+  - jm4742
+date: "June 4, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+```{r}
+
+```
