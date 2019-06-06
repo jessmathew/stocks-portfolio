@@ -201,43 +201,23 @@ $(document).ready(function () {
 <pre class="r"><code>library(tools)
 setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\sample_history&quot;)
 
-A &lt;- read.csv(file=&quot;A.csv&quot;, header=TRUE, sep=&quot;,&quot;)[,c(&quot;date&quot;, &quot;adjclose&quot;)]
-colnames(A)[2] &lt;- file_path_sans_ext(&quot;A.csv&quot;)
-ACSG &lt;- read.csv(file=&quot;ACSG.csv&quot;, header=TRUE, sep=&quot;,&quot;)[,c(&quot;date&quot;, &quot;adjclose&quot;)]
-colnames(ACSG)[2] &lt;- file_path_sans_ext(&quot;ACSG.csv&quot;)
+# A &lt;- read.csv(file=&quot;A.csv&quot;, header=TRUE, sep=&quot;,&quot;)[,c(&quot;date&quot;, &quot;adjclose&quot;)]
+# colnames(A)[2] &lt;- file_path_sans_ext(&quot;A.csv&quot;)
+# ACSG &lt;- read.csv(file=&quot;ACSG.csv&quot;, header=TRUE, sep=&quot;,&quot;)[,c(&quot;date&quot;, &quot;adjclose&quot;)]
+# colnames(ACSG)[2] &lt;- file_path_sans_ext(&quot;ACSG.csv&quot;)
+# 
+# head(A)
+# head(ACSG)
+# 
+# nrow(A)
+# nrow(ACSG)
+# 
+# test &lt;- merge(x = A, y = ACSG, by = &quot;date&quot;, all = TRUE)
+# head(test)
+# nrow(test)
 
-head(A)</code></pre>
-<pre><code>##         date     A
-## 1 2019-04-18 76.17
-## 2 2019-04-17 75.43
-## 3 2019-04-16 77.55
-## 4 2019-04-15 80.40
-## 5 2019-04-12 80.98
-## 6 2019-04-11 81.08</code></pre>
-<pre class="r"><code>head(ACSG)</code></pre>
-<pre><code>##         date   ACSG
-## 1 2019-04-18 26.880
-## 2 2019-04-17 26.880
-## 3 2019-04-16 26.790
-## 4 2019-04-15 26.690
-## 5 2019-04-12 26.682
-## 6 2019-04-11 26.516</code></pre>
-<pre class="r"><code>nrow(A)</code></pre>
-<pre><code>## [1] 4884</code></pre>
-<pre class="r"><code>nrow(ACSG)</code></pre>
-<pre><code>## [1] 92</code></pre>
-<pre class="r"><code>test &lt;- merge(x = A, y = ACSG, by = &quot;date&quot;, all = TRUE)
-head(test)</code></pre>
-<pre><code>##         date        A ACSG
-## 1 1999-11-18 27.31335   NA
-## 2 1999-11-19 25.06311   NA
-## 3 1999-11-22 27.31335   NA
-## 4 1999-11-23 24.83032   NA
-## 5 1999-11-24 25.48988   NA
-## 6 1999-11-26 25.56748   NA</code></pre>
-<pre class="r"><code>nrow(test)</code></pre>
-<pre><code>## [1] 4884</code></pre>
-<pre class="r"><code>multmerge &lt;- function(mypath) {
+
+multmerge &lt;- function(mypath) {
   filenames&lt;-list.files(path=mypath, full.names=TRUE)
   datalist &lt;- lapply(filenames, function(x){
     stockData &lt;- read.csv(file=x,header=T)[,c(&quot;date&quot;, &quot;adjclose&quot;)]
@@ -251,13 +231,27 @@ head(test)</code></pre>
 
 mymergeddata &lt;- multmerge(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\sample_history&quot;)
 head(mymergeddata)</code></pre>
-<pre><code>##         date        A ACSG IMI NRGZ SCIJ
-## 1 1999-11-18 27.31335   NA  NA   NA   NA
-## 2 1999-11-19 25.06311   NA  NA   NA   NA
-## 3 1999-11-22 27.31335   NA  NA   NA   NA
-## 4 1999-11-23 24.83032   NA  NA   NA   NA
-## 5 1999-11-24 25.48988   NA  NA   NA   NA
-## 6 1999-11-26 25.56748   NA  NA   NA   NA</code></pre>
+<pre><code>##         date        A       AA AAAU     AABA AAC AADR AAL AAMC     AAME
+## 1 1999-11-18 27.31335 55.67672   NA 53.46875  NA   NA  NA   NA 2.425792
+## 2 1999-11-19 25.06311 56.67602   NA 54.68750  NA   NA  NA   NA 2.541306
+## 3 1999-11-22 27.31335 57.46121   NA 56.70312  NA   NA  NA   NA 2.541306
+## 4 1999-11-23 24.83032 58.06794   NA 55.29688  NA   NA  NA   NA 2.541306
+## 5 1999-11-24 25.48988 57.25599   NA 57.75000  NA   NA  NA   NA 2.541306
+## 6 1999-11-26 25.56748 58.13934   NA 56.71875  NA   NA  NA   NA 2.627895
+##        AAN AAOI      AAON AAP     AAPL AAT AAU AAWW AAXJ AAXN       AB ABB
+## 1 4.481222   NA 0.7460400  NA 2.134365  NA  NA   NA   NA   NA 8.761542  NA
+## 2 4.481222   NA 0.7460400  NA 2.201343  NA  NA   NA   NA   NA 8.727585  NA
+## 3 4.289170   NA 0.7460400  NA 2.158179  NA  NA   NA   NA   NA 8.506845  NA
+## 4 4.161136   NA 0.7316932  NA 2.210273  NA  NA   NA   NA   NA 8.438928  NA
+## 5 4.065109   NA 0.7388667  NA 2.254925  NA  NA   NA   NA   NA 8.371008  NA
+## 6 4.065109   NA 0.7173462  NA 2.263856  NA  NA   NA   NA   NA 8.404965  NA
+##   ABBV      ABC     ABCB ABDC     ABEO
+## 1   NA 2.709533 6.047902   NA 415.4123
+## 2   NA 2.685011 6.103900   NA 415.4123
+## 3   NA 2.599190 5.767907   NA 372.4386
+## 4   NA 2.415285 6.047902   NA 415.4123
+## 5   NA 2.415285 5.935901   NA 415.4123
+## 6   NA 2.415285 5.935901   NA 415.4123</code></pre>
 <pre class="r"><code># TEST &lt;- read.csv(file=paste(mymergeddata[1],&quot;.csv&quot;), header=TRUE, sep=&quot;,&quot;)
 # head(TEST)</code></pre>
 
