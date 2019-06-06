@@ -11,9 +11,42 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-
 ```{r}
+library(tools)
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\sample_history")
 
+A <- read.csv(file="A.csv", header=TRUE, sep=",")[,c("date", "adjclose")]
+colnames(A)[2] <- file_path_sans_ext("A.csv")
+ACSG <- read.csv(file="ACSG.csv", header=TRUE, sep=",")[,c("date", "adjclose")]
+colnames(ACSG)[2] <- file_path_sans_ext("ACSG.csv")
+
+head(A)
+head(ACSG)
+
+nrow(A)
+nrow(ACSG)
+
+test <- merge(x = A, y = ACSG, by = "date", all = TRUE)
+head(test)
+nrow(test)
+
+
+multmerge <- function(mypath) {
+  filenames<-list.files(path=mypath, full.names=TRUE)
+  datalist <- lapply(filenames, function(x){
+    stockData <- read.csv(file=x,header=T)[,c("date", "adjclose")]
+    colnames(stockData)[2] <- file_path_sans_ext(basename(x))
+    return (stockData)
+    })
+  Reduce(function(x,y) {
+    merge(x,y, by.x = "date", by.y = "date", all = TRUE)
+    }, datalist)
+}
+
+mymergeddata <- multmerge("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\sample_history")
+head(mymergeddata)
+
+# TEST <- read.csv(file=paste(mymergeddata[1],".csv"), header=TRUE, sep=",")
+# head(TEST)
 ```
+
