@@ -12,22 +12,82 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-library(tools)
-setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\sample_history")
 
-multmerge <- function(mypath) {
-  filenames<-list.files(path=mypath, full.names=TRUE)
-  datalist <- lapply(filenames, function(x){
-    stockData <- read.csv(file=x,header=T)[,c("date", "adjclose")]
-    colnames(stockData)[2] <- file_path_sans_ext(basename(x))
-    return (stockData)
-    })
-  Reduce(function(x,y) {
-    merge(x,y, by.x = "date", by.y = "date", all = TRUE)
-    }, datalist)
-}
+## Merge all the indivdual files together to create my initial data set. 
 
-mymergeddata <- multmerge("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\sample_history")
-head(mymergeddata)
+# library(tools)
+
+# multmerge <- function(mypath) {
+#   filenames<-list.files(path=mypath, full.names=TRUE)
+#   datalist <- lapply(filenames, function(x){
+#     stockData <- read.csv(file=x,header=T)[,c("date", "adjclose")]
+#     colnames(stockData)[2] <- file_path_sans_ext(basename(x))
+#     return (stockData)
+#     })
+#   Reduce(function(x,y) {
+#     merge(x,y, by.x = "date", by.y = "date", all = TRUE)
+#     }, datalist)
+# }
+# 
+# mymergeddata <- multmerge("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\full_history")
+# head(mymergeddata)
+#
+
+# write.csv(mymergeddata,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FullStockHistory.csv", row.names = FALSE)
+
+## Read the full stock history data and order it, to make a new data set that I can run my analysis on.
+# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
+# fullStockHistoryData <- read.csv(file="FullStockHistory.csv", header=TRUE, sep=",")
+# orderedFullStockHistoryData <- fullStockHistoryData[order(fullStockHistoryData$date),]
+# head(orderedFullStockHistoryData)
+
+# write.csv(orderedFullStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\OrderedFullStockHistory.csv", row.names = FALSE)
+
+## This section containts a loop that basically finds the ten year period that has the most assets with 5% or less of the data being missing.
+# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
+# orderedFullStockHistoryData <- read.csv(file="OrderedSampleStockHistory.csv", header=TRUE, sep=",")
+# 
+# numberOfDays <- nrow(orderedFullStockHistoryData)
+# numberOfDays
+# 
+# days <- seq(1:numberOfDays)
+# financialDaysInYear <- 252
+# financialDaysInTenYears <- financialDaysInYear*10
+# 
+# dateRangeDataFrame <- data.frame(InitialDay = 0, FinalDay = 0, NAPercentagesLessThanFivePercentCount = 0)
+# 
+# for (initialDay in days) {
+#   finalDay <- initialDay + (financialDaysInTenYears - 1)
+#   
+#   stockAssetDataForCurrentTenYearPeriod <- orderedFullStockHistoryData[initialDay:finalDay, ]
+#   
+#   naPercentages <- sapply(stockAssetDataForCurrentTenYearPeriod, function(y) sum(length(which(is.na(y))))/financialDaysInTenYears)
+#   
+#   countOfNAPercentagesLessThanFivePercent <- sum(naPercentages <= 0.05)
+#   
+#   if (dateRangeDataFrame[3] < countOfNAPercentagesLessThanFivePercent) {
+#     dateRangeDataFrame[1] = initialDay
+#     dateRangeDataFrame[2] = finalDay
+#     dateRangeDataFrame[3] = countOfNAPercentagesLessThanFivePercent
+#   }
+# }
+# 
+# dateRangeDataFrame
+
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
+orderedFullStockHistoryData <- read.csv(file="OrderedFullStockHistory.csv", header=TRUE, sep=",")
+
+numberOfDays <- nrow(orderedFullStockHistoryData)
+financialDaysInYear <- 252
+financialDaysInTenYears <- financialDaysInYear*10
+
+lastDayInTheFinalTenYearPeriod <- numberOfDays
+firstDayInTheFinalTenYearPeriod <- lastDayInTheFinalTenYearPeriod - financialDaysInTenYears
+
+stockAssetDataForFinalTenYearPeriod <- orderedFullStockHistoryData[firstDayInTheFinalTenYearPeriod:lastDayInTheFinalTenYearPeriod, -1]
+naPercentages <- sapply(stockAssetDataForFinalTenYearPeriod, function(y) sum(length(which(is.na(y))))/financialDaysInTenYears)
+countOfNAPercentagesLessThanFivePercent <- sum(naPercentages <= 0.05)
+
+countOfNAPercentagesLessThanFivePercent
 ```
 

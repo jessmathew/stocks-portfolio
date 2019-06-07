@@ -198,62 +198,84 @@ $(document).ready(function () {
 </div>
 
 
-<pre class="r"><code>library(tools)
-setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\sample_history&quot;)
+<pre class="r"><code>## Merge all the indivdual files together to create my initial data set. 
 
-# A &lt;- read.csv(file=&quot;A.csv&quot;, header=TRUE, sep=&quot;,&quot;)[,c(&quot;date&quot;, &quot;adjclose&quot;)]
-# colnames(A)[2] &lt;- file_path_sans_ext(&quot;A.csv&quot;)
-# ACSG &lt;- read.csv(file=&quot;ACSG.csv&quot;, header=TRUE, sep=&quot;,&quot;)[,c(&quot;date&quot;, &quot;adjclose&quot;)]
-# colnames(ACSG)[2] &lt;- file_path_sans_ext(&quot;ACSG.csv&quot;)
+# library(tools)
+
+# multmerge &lt;- function(mypath) {
+#   filenames&lt;-list.files(path=mypath, full.names=TRUE)
+#   datalist &lt;- lapply(filenames, function(x){
+#     stockData &lt;- read.csv(file=x,header=T)[,c(&quot;date&quot;, &quot;adjclose&quot;)]
+#     colnames(stockData)[2] &lt;- file_path_sans_ext(basename(x))
+#     return (stockData)
+#     })
+#   Reduce(function(x,y) {
+#     merge(x,y, by.x = &quot;date&quot;, by.y = &quot;date&quot;, all = TRUE)
+#     }, datalist)
+# }
 # 
-# head(A)
-# head(ACSG)
+# mymergeddata &lt;- multmerge(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\full_history&quot;)
+# head(mymergeddata)
+#
+
+# write.csv(mymergeddata,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FullStockHistory.csv&quot;, row.names = FALSE)
+
+## Read the full stock history data and order it, to make a new data set that I can run my analysis on.
+# setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
+# fullStockHistoryData &lt;- read.csv(file=&quot;FullStockHistory.csv&quot;, header=TRUE, sep=&quot;,&quot;)
+# orderedFullStockHistoryData &lt;- fullStockHistoryData[order(fullStockHistoryData$date),]
+# head(orderedFullStockHistoryData)
+
+# write.csv(orderedFullStockHistoryData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\OrderedFullStockHistory.csv&quot;, row.names = FALSE)
+
+## This section containts a loop that basically finds the ten year period that has the most assets with 5% or less of the data being missing.
+# setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
+# orderedFullStockHistoryData &lt;- read.csv(file=&quot;OrderedSampleStockHistory.csv&quot;, header=TRUE, sep=&quot;,&quot;)
 # 
-# nrow(A)
-# nrow(ACSG)
+# numberOfDays &lt;- nrow(orderedFullStockHistoryData)
+# numberOfDays
 # 
-# test &lt;- merge(x = A, y = ACSG, by = &quot;date&quot;, all = TRUE)
-# head(test)
-# nrow(test)
+# days &lt;- seq(1:numberOfDays)
+# financialDaysInYear &lt;- 252
+# financialDaysInTenYears &lt;- financialDaysInYear*10
+# 
+# dateRangeDataFrame &lt;- data.frame(InitialDay = 0, FinalDay = 0, NAPercentagesLessThanFivePercentCount = 0)
+# 
+# for (initialDay in days) {
+#   finalDay &lt;- initialDay + (financialDaysInTenYears - 1)
+#   
+#   stockAssetDataForCurrentTenYearPeriod &lt;- orderedFullStockHistoryData[initialDay:finalDay, ]
+#   
+#   naPercentages &lt;- sapply(stockAssetDataForCurrentTenYearPeriod, function(y) sum(length(which(is.na(y))))/financialDaysInTenYears)
+#   
+#   countOfNAPercentagesLessThanFivePercent &lt;- sum(naPercentages &lt;= 0.05)
+#   
+#   if (dateRangeDataFrame[3] &lt; countOfNAPercentagesLessThanFivePercent) {
+#     dateRangeDataFrame[1] = initialDay
+#     dateRangeDataFrame[2] = finalDay
+#     dateRangeDataFrame[3] = countOfNAPercentagesLessThanFivePercent
+#   }
+# }
+# 
+# dateRangeDataFrame
 
+setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
+orderedFullStockHistoryData &lt;- read.csv(file=&quot;OrderedFullStockHistory.csv&quot;, header=TRUE, sep=&quot;,&quot;)
 
-multmerge &lt;- function(mypath) {
-  filenames&lt;-list.files(path=mypath, full.names=TRUE)
-  datalist &lt;- lapply(filenames, function(x){
-    stockData &lt;- read.csv(file=x,header=T)[,c(&quot;date&quot;, &quot;adjclose&quot;)]
-    colnames(stockData)[2] &lt;- file_path_sans_ext(basename(x))
-    return (stockData)
-    })
-  Reduce(function(x,y) {
-    merge(x,y, by.x = &quot;date&quot;, by.y = &quot;date&quot;, all = TRUE)
-    }, datalist)
-}
-
-mymergeddata &lt;- multmerge(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\sample_history&quot;)
-head(mymergeddata)</code></pre>
-<pre><code>##         date        A       AA AAAU     AABA AAC AADR AAL AAMC     AAME
-## 1 1999-11-18 27.31335 55.67672   NA 53.46875  NA   NA  NA   NA 2.425792
-## 2 1999-11-19 25.06311 56.67602   NA 54.68750  NA   NA  NA   NA 2.541306
-## 3 1999-11-22 27.31335 57.46121   NA 56.70312  NA   NA  NA   NA 2.541306
-## 4 1999-11-23 24.83032 58.06794   NA 55.29688  NA   NA  NA   NA 2.541306
-## 5 1999-11-24 25.48988 57.25599   NA 57.75000  NA   NA  NA   NA 2.541306
-## 6 1999-11-26 25.56748 58.13934   NA 56.71875  NA   NA  NA   NA 2.627895
-##        AAN AAOI      AAON AAP     AAPL AAT AAU AAWW AAXJ AAXN       AB ABB
-## 1 4.481222   NA 0.7460400  NA 2.134365  NA  NA   NA   NA   NA 8.761542  NA
-## 2 4.481222   NA 0.7460400  NA 2.201343  NA  NA   NA   NA   NA 8.727585  NA
-## 3 4.289170   NA 0.7460400  NA 2.158179  NA  NA   NA   NA   NA 8.506845  NA
-## 4 4.161136   NA 0.7316932  NA 2.210273  NA  NA   NA   NA   NA 8.438928  NA
-## 5 4.065109   NA 0.7388667  NA 2.254925  NA  NA   NA   NA   NA 8.371008  NA
-## 6 4.065109   NA 0.7173462  NA 2.263856  NA  NA   NA   NA   NA 8.404965  NA
-##   ABBV      ABC     ABCB ABDC     ABEO
-## 1   NA 2.709533 6.047902   NA 415.4123
-## 2   NA 2.685011 6.103900   NA 415.4123
-## 3   NA 2.599190 5.767907   NA 372.4386
-## 4   NA 2.415285 6.047902   NA 415.4123
-## 5   NA 2.415285 5.935901   NA 415.4123
-## 6   NA 2.415285 5.935901   NA 415.4123</code></pre>
-<pre class="r"><code># TEST &lt;- read.csv(file=paste(mymergeddata[1],&quot;.csv&quot;), header=TRUE, sep=&quot;,&quot;)
-# head(TEST)</code></pre>
+numberOfDays &lt;- ncol(orderedFullStockHistoryData)
+numberOfDays</code></pre>
+<pre><code>## [1] 8189</code></pre>
+<pre class="r"><code># financialDaysInYear &lt;- 252
+# financialDaysInTenYears &lt;- financialDaysInYear*10
+# 
+# lastDayInTheFinalTenYearPeriod &lt;- numberOfDays
+# firstDayInTheFinalTenYearPeriod &lt;- lastDayInTheFinalTenYearPeriod - financialDaysInTenYears
+# 
+# stockAssetDataForFinalTenYearPeriod &lt;- orderedFullStockHistoryData[firstDayInTheFinalTenYearPeriod:lastDayInTheFinalTenYearPeriod, -1]
+# naPercentages &lt;- sapply(stockAssetDataForFinalTenYearPeriod, function(y) sum(length(which(is.na(y))))/financialDaysInTenYears)
+# countOfNAPercentagesLessThanFivePercent &lt;- sum(naPercentages &lt;= 0.05)
+# 
+# countOfNAPercentagesLessThanFivePercent</code></pre>
 
 
 
