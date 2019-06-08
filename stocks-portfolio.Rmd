@@ -12,6 +12,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+library(zoo)
+# library(tidyverse)
 
 ## Merge all the indivdual files together to create my initial data set. 
 
@@ -74,20 +76,37 @@ knitr::opts_chunk$set(echo = TRUE)
 # 
 # dateRangeDataFrame
 
+## Check the final ten years of stock history to see how many assets have 5% or less of their data missing. We then write the file so that we can just read from it later, instead of recomputing to find the algorithm. 
+# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
+# orderedFullStockHistoryData <- read.csv(file="OrderedFullStockHistory.csv", header=TRUE, sep=",")
+# 
+# numberOfDays <- nrow(orderedFullStockHistoryData)
+# financialDaysInYear <- 252
+# financialDaysInTenYears <- financialDaysInYear*10
+# 
+# lastDayInTheFinalTenYearPeriod <- numberOfDays
+# firstDayInTheFinalTenYearPeriod <- lastDayInTheFinalTenYearPeriod - financialDaysInTenYears
+# 
+# stockAssetDataForFinalTenYearPeriod <- orderedFullStockHistoryData[firstDayInTheFinalTenYearPeriod:lastDayInTheFinalTenYearPeriod, ]
+# 
+# columnNamesWithNinetyFivePercentOfDataAvailable <- colnames(stockAssetDataForFinalTenYearPeriod)[as.data.frame(colSums(is.na(stockAssetDataForFinalTenYearPeriod))/financialDaysInTenYears) <= 0.05]
+# columnNamesWithNinetyFivePercentOfDataAvailable
+# 
+# finalTenYearsStockHistoryForRelevantStocks <- subset(stockAssetDataForFinalTenYearPeriod, select=columnNamesWithNinetyFivePercentOfDataAvailable)
+# 
+# write.csv(finalTenYearsStockHistoryForRelevantStocks,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FinalTenYearsStockHistoryForRelevantStocks.csv", row.names = FALSE)
+
+# Compute the daily log returns using adjusted close prices. 
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-orderedFullStockHistoryData <- read.csv(file="OrderedFullStockHistory.csv", header=TRUE, sep=",")
+finalTenYearsStockHistoryData <- read.csv(file="FinalTenYearsStockHistoryForRelevantStocks.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",4019)))
 
-numberOfDays <- nrow(orderedFullStockHistoryData)
-financialDaysInYear <- 252
-financialDaysInTenYears <- financialDaysInYear*10
-
-lastDayInTheFinalTenYearPeriod <- numberOfDays
-firstDayInTheFinalTenYearPeriod <- lastDayInTheFinalTenYearPeriod - financialDaysInTenYears
-
-stockAssetDataForFinalTenYearPeriod <- orderedFullStockHistoryData[firstDayInTheFinalTenYearPeriod:lastDayInTheFinalTenYearPeriod, -1]
-naPercentages <- sapply(stockAssetDataForFinalTenYearPeriod, function(y) sum(length(which(is.na(y))))/financialDaysInTenYears)
-countOfNAPercentagesLessThanFivePercent <- sum(naPercentages <= 0.05)
-
-countOfNAPercentagesLessThanFivePercent
+dailyLogReturns <- data.frame(
+   cbind.data.frame(
+     finalTenYearsStockHistoryData$date[-1],
+     diff(as.matrix(log(finalTenYearsStockHistoryData[,-1])))
+     )
+   )
+names(dailyLogReturns)[1]<-"date"
+head(dailyLogReturns)
 ```
 
