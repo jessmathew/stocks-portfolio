@@ -207,17 +207,25 @@ $(document).ready(function () {
 ##     as.Date, as.Date.numeric</code></pre>
 <pre class="r"><code>library(forecast)</code></pre>
 <pre><code>## Warning: package 'forecast' was built under R version 3.5.3</code></pre>
-<pre class="r"><code>library(mice)</code></pre>
-<pre><code>## Warning: package 'mice' was built under R version 3.5.3</code></pre>
-<pre><code>## Loading required package: lattice</code></pre>
-<pre><code>## 
-## Attaching package: 'mice'</code></pre>
-<pre><code>## The following objects are masked from 'package:base':
-## 
-##     cbind, rbind</code></pre>
-<pre class="r"><code># library(tidyverse)
-
-## Merge all the indivdual files together to create my initial data set. 
+<pre class="r"><code>library(tidyverse)</code></pre>
+<pre><code>## Warning: package 'tidyverse' was built under R version 3.5.3</code></pre>
+<pre><code>## -- Attaching packages --------------------------------------- tidyverse 1.2.1 --</code></pre>
+<pre><code>## v ggplot2 3.1.1     v purrr   0.3.2
+## v tibble  2.1.1     v dplyr   0.8.1
+## v tidyr   0.8.3     v stringr 1.4.0
+## v readr   1.3.1     v forcats 0.4.0</code></pre>
+<pre><code>## Warning: package 'ggplot2' was built under R version 3.5.3</code></pre>
+<pre><code>## Warning: package 'tibble' was built under R version 3.5.3</code></pre>
+<pre><code>## Warning: package 'tidyr' was built under R version 3.5.3</code></pre>
+<pre><code>## Warning: package 'readr' was built under R version 3.5.3</code></pre>
+<pre><code>## Warning: package 'purrr' was built under R version 3.5.3</code></pre>
+<pre><code>## Warning: package 'dplyr' was built under R version 3.5.3</code></pre>
+<pre><code>## Warning: package 'stringr' was built under R version 3.5.3</code></pre>
+<pre><code>## Warning: package 'forcats' was built under R version 3.5.3</code></pre>
+<pre><code>## -- Conflicts ------------------------------------------ tidyverse_conflicts() --
+## x dplyr::filter() masks stats::filter()
+## x dplyr::lag()    masks stats::lag()</code></pre>
+<pre class="r"><code>## Merge all the indivdual files together to create my initial data set. 
 
 # library(tools)
 
@@ -323,13 +331,22 @@ $(document).ready(function () {
 ## Fill in the missing NA values with reasonable estimates.
 
 setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
-# finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FinalTenYearsStockHistoryForRelevantStocks.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,4019)))
+# finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYears.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;date&quot;,rep(&quot;numeric&quot;,3909)))
+# finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYears.csv&quot;, header=TRUE, sep=&quot;,&quot;)
 finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYears.csv&quot;, header=TRUE, sep=&quot;,&quot;)
-dim(finalTenYearsStockHistoryData)</code></pre>
-<pre><code>## [1] 2521 3910</code></pre>
-<pre class="r"><code>## Compute the daily log returns using adjusted close prices. 
+
+columnNames &lt;- colnames(finalTenYearsStockHistoryData)
+
+for (columnName in columnNames)
+{
+  finalTenYearsStockHistoryData &lt;- finalTenYearsStockHistoryData %&gt;% fill(columnName) #default direction down
+}
+
+write.csv(finalTenYearsStockHistoryData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv&quot;, row.names = FALSE)
+
+## Compute the daily log returns using adjusted close prices. 
 # setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
-# finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FinalTenYearsStockHistoryForRelevantStocks.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,4019)))
+# finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYears.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3909)))
 # 
 # head(finalTenYearsStockHistoryData)
 # 

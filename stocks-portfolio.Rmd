@@ -14,8 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(zoo)
 library(forecast)
-library(mice)
-# library(tidyverse)
+library(tidyverse)
 
 ## Merge all the indivdual files together to create my initial data set. 
 
@@ -124,8 +123,17 @@ library(mice)
 
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
 # finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",", colClasses=c("date",rep("numeric",3909)))
+# finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",")
 finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",")
-dim(finalTenYearsStockHistoryData)
+
+columnNames <- colnames(finalTenYearsStockHistoryData)
+
+for (columnName in columnNames)
+{
+  finalTenYearsStockHistoryData <- finalTenYearsStockHistoryData %>% fill(columnName) #default direction down
+}
+
+write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv", row.names = FALSE)
 
 ## Compute the daily log returns using adjusted close prices. 
 # setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
