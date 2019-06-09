@@ -330,23 +330,23 @@ $(document).ready(function () {
 
 ## Fill in the missing NA values with reasonable estimates.
 
-setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
-# finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYears.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;date&quot;,rep(&quot;numeric&quot;,3909)))
+# setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
+# # finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYears.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;date&quot;,rep(&quot;numeric&quot;,3909)))
+# # finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYears.csv&quot;, header=TRUE, sep=&quot;,&quot;)
 # finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYears.csv&quot;, header=TRUE, sep=&quot;,&quot;)
-finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYears.csv&quot;, header=TRUE, sep=&quot;,&quot;)
-
-columnNames &lt;- colnames(finalTenYearsStockHistoryData)
-
-for (columnName in columnNames)
-{
-  finalTenYearsStockHistoryData &lt;- finalTenYearsStockHistoryData %&gt;% fill(columnName) #default direction down
-}
-
-write.csv(finalTenYearsStockHistoryData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv&quot;, row.names = FALSE)
+# 
+# columnNames &lt;- colnames(finalTenYearsStockHistoryData)
+# 
+# for (columnName in columnNames)
+# {
+#   finalTenYearsStockHistoryData &lt;- finalTenYearsStockHistoryData %&gt;% fill(columnName) #default direction down
+# }
+# 
+# write.csv(finalTenYearsStockHistoryData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv&quot;, row.names = FALSE)
 
 ## Compute the daily log returns using adjusted close prices. 
 # setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
-# finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYears.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3909)))
+# finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3909)))
 # 
 # head(finalTenYearsStockHistoryData)
 # 
@@ -362,12 +362,13 @@ write.csv(finalTenYearsStockHistoryData,&quot;C:\\Users\\jessm\\OneDrive\\Docume
 # 
 # write.csv(dailyLogReturns,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FullLogStockAssetData.csv&quot;, row.names = FALSE)
 
-## Detect and replace the outliers and missing values with estimates that are more consistent with the majority of the data
+## Detect and replace the outliers with estimates that are more consistent with the majority of the data
 
-# impute &lt;- mice(dailyLogReturns[,-1], 1, seed = 1)
-# imputedStockAssetData &lt;- complete(impute, 1)
-# 
-# write.csv(imputedStockAssetData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\ImputedFullLogStockAssetData.csv&quot;, row.names = FALSE)</code></pre>
+setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
+# fullLogAssetData &lt;- read.csv(file=&quot;FullLogStockAssetData.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3909)))
+fullLogAssetData &lt;- read.csv(file=&quot;FullLogStockAssetData.csv&quot;, header=TRUE, sep=&quot;,&quot;)
+dim(fullLogAssetData)</code></pre>
+<pre><code>## [1] 2520 3910</code></pre>
 
 
 

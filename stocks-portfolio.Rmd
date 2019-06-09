@@ -121,23 +121,23 @@ library(tidyverse)
 
 ## Fill in the missing NA values with reasonable estimates.
 
-setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",", colClasses=c("date",rep("numeric",3909)))
+# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
+# # finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",", colClasses=c("date",rep("numeric",3909)))
+# # finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",")
 # finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",")
-finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",")
-
-columnNames <- colnames(finalTenYearsStockHistoryData)
-
-for (columnName in columnNames)
-{
-  finalTenYearsStockHistoryData <- finalTenYearsStockHistoryData %>% fill(columnName) #default direction down
-}
-
-write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv", row.names = FALSE)
+# 
+# columnNames <- colnames(finalTenYearsStockHistoryData)
+# 
+# for (columnName in columnNames)
+# {
+#   finalTenYearsStockHistoryData <- finalTenYearsStockHistoryData %>% fill(columnName) #default direction down
+# }
+# 
+# write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv", row.names = FALSE)
 
 ## Compute the daily log returns using adjusted close prices. 
 # setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3909)))
+# finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3909)))
 # 
 # head(finalTenYearsStockHistoryData)
 # 
@@ -153,11 +153,11 @@ write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\
 # 
 # write.csv(dailyLogReturns,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FullLogStockAssetData.csv", row.names = FALSE)
 
-## Detect and replace the outliers and missing values with estimates that are more consistent with the majority of the data
+## Detect and replace the outliers with estimates that are more consistent with the majority of the data
 
-# impute <- mice(dailyLogReturns[,-1], 1, seed = 1)
-# imputedStockAssetData <- complete(impute, 1)
-# 
-# write.csv(imputedStockAssetData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\ImputedFullLogStockAssetData.csv", row.names = FALSE)
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
+fullLogAssetData <- read.csv(file="FullLogStockAssetData.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3909)))
+
+
 ```
 
