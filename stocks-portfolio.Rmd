@@ -102,7 +102,7 @@ library(tidyverse)
 # # finalTenYearsStockHistoryData <- read.csv(file="FinalTenYearsStockHistoryForRelevantStocks.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",4019)))
 # finalTenYearsStockHistoryData <- read.csv(file="FinalTenYearsStockHistoryForRelevantStocks.csv", header=TRUE, sep=",")
 # 
-# columnIndexes <- seq(1:ncol(finalTenYearsStockHistoryData))
+# columnIndexes <- seq(1,ncol(finalTenYearsStockHistoryData))
 # 
 # columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen <- c()
 # for (columnIndex in columnIndexes)
@@ -119,7 +119,7 @@ library(tidyverse)
 # 
 # write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FilteredStockHistoryDataForTheFinalTenYears.csv", row.names = FALSE)
 
-## Fill in the missing NA values with reasonable estimates.
+## Fill in the missing NA values with reasonable estimates. For the columns where NA is the first value, we need to manually delete those. Approximately 3 columns with 10 NA values in total between the 3 columns.
 
 # setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
 # # finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",", colClasses=c("date",rep("numeric",3909)))
@@ -137,7 +137,7 @@ library(tidyverse)
 
 ## Compute the daily log returns using adjusted close prices. 
 # setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3909)))
+# finalTenYearsStockHistoryData <- read.csv(file="TESTFilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3909)))
 # 
 # head(finalTenYearsStockHistoryData)
 # 
@@ -153,11 +153,43 @@ library(tidyverse)
 # 
 # write.csv(dailyLogReturns,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FullLogStockAssetData.csv", row.names = FALSE)
 
+## Need to remove columns that have too many NA values in them at this point, in the log data file. Just remove all columns with NA's in them at this point, after taking the logs.
+
+# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
+# finalTenYearsStockHistoryData <- read.csv(file="FullLogStockAssetData.csv", header=TRUE, sep=",")
+# 
+# finalTenYearsStockHistoryData <- finalTenYearsStockHistoryData[ , colSums(is.na(finalTenYearsStockHistoryData)) == 0]
+# 
+# write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FullLogStockAssetDataFilteredForNA.csv", row.names = FALSE)
+
 ## Detect and replace the outliers with estimates that are more consistent with the majority of the data
 
+# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
+# fullLogAssetData <- read.csv(file="FullLogStockAssetDataFilteredForNA.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))
+
+# winsor1 <- function (x, fraction=.05)
+# {
+#    if(length(fraction) != 1 || fraction < 0 ||
+#          fraction > 0.5) {
+#       stop("bad value for 'fraction'")
+#    }
+#    lim <- quantile(x, probs=c(fraction, 1-fraction))
+#    x[ x < lim[1] ] <- lim[1]
+#    x[ x > lim[2] ] <- lim[2]
+#    x
+# }
+# 
+# columnIndexes <- seq(2,ncol(fullLogAssetData))
+# 
+# for (columnIndex in columnIndexes) {
+#   fullLogAssetData[,columnIndex] <- winsor1(fullLogAssetData[,columnIndex])
+# }
+# 
+# write.csv(fullLogAssetData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FittedFullLogStockAssetData.csv", row.names = FALSE)
+
+## Portfolio optimization section.
+
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-fullLogAssetData <- read.csv(file="FullLogStockAssetData.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3909)))
-
-
+fittedFullLogAssetData <- read.csv(file="FittedFullLogStockAssetData.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))
 ```
 
