@@ -187,9 +187,49 @@ library(tidyverse)
 # 
 # write.csv(fullLogAssetData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FittedFullLogStockAssetData.csv", row.names = FALSE)
 
-## Portfolio optimization section.
+## Now we look into portfolio optimization.
 
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
 fittedFullLogAssetData <- read.csv(file="FittedFullLogStockAssetData.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))
-```
+dim(fittedFullLogAssetData)
+fittedFullLogAssetData <- fittedFullLogAssetData[-1,-1]
+dim(fittedFullLogAssetData)
 
+
+numberOfRows <- nrow(fittedFullLogAssetData)
+numberOfColumns <- ncol(fittedFullLogAssetData)
+
+stockIndexes <- seq(1,numberOfColumns)
+
+h <- 5
+m <- 252
+
+breakingCondition <- numberOfRows + h
+
+index <- 0
+
+while (1==1)
+{
+  startRow <- (h*index) + 1
+  endRow <- (h*index) + m
+  
+  assetsDataForCurrentTimePeriod <- fittedFullLogAssetData[startRow:endRow,]
+  
+  for (stockIndex in stockIndexes)
+  {
+    currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,stockIndex]
+    
+    fit <- lm(currentAssetDataForStockIndex ~ assetsDataForCurrentTimePeriod)
+    result <- summary(fit)
+    # summary gives us a lot of useful information, but we're mostly in beta value !!
+    beta <- result$coefficients[2,1]
+    print(beta)
+  }
+  
+  if (endRow > breakingCondition)
+  {
+    break
+  }
+  index <- index + 1
+}
+```
