@@ -229,24 +229,15 @@ for (stockIndex in stockIndexes)
   sharprRatiosWithStockIndex[nrow(sharprRatiosWithStockIndex)+1, ] <- c(columnName, sharpeRatio[1,2])
 }
 
- stockNamesWithHighestSharpeRatios <- sharprRatiosWithStockIndex %>%
-    arrange(desc(SharpeRatio)) %>%
-    slice(1:50)
- 
- stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
- 
- tmp <- cor(stocksWithHighestSharpeRatios)
- tmp
- 
- correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>%
-    correlate() %>% 
-    stretch() %>% 
-    arrange(abs(r))
- 
- namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[1] %>% distinct() %>% slice(1:30)
- stocksToUseForModeling <- subset(assetsDataForCurrentTimePeriod, select=namesOfLowlyCorrelatedStocks[,1])
- 
- dim(stocksToUseForModeling)
+stockNamesWithHighestSharpeRatios <- sharprRatiosWithStockIndex %>% arrange(desc(SharpeRatio)) %>% slice(1:50)
+
+stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
+
+correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate() %>% stretch() %>% arrange(abs(r))
+
+namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[1] %>% distinct() %>% slice(1:30)
+
+stocksToUseForModeling <- data.frame(assetsDataForCurrentTimePeriod[1], subset(assetsDataForCurrentTimePeriod, select=namesOfLowlyCorrelatedStocks[,1]))
 
 # while (index < breakingCondition)
 # {
