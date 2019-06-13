@@ -18,6 +18,16 @@ library(tidyverse)
 library(PerformanceAnalytics)
 library(dplyr)
 library(corrr)
+library(tseries)
+library(xts)
+library(quantmod)
+library(PortfolioAnalytics)
+library(ROI)
+library(ROI.plugin.glpk)
+library(ROI.plugin.quadprog)
+library(ROI.plugin.symphony)
+library(tsbox)
+library(reshape2)
 
 ## Merge all the indivdual files together to create my initial data set. 
 
@@ -237,7 +247,74 @@ correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate() %>%
 
 namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[1] %>% distinct() %>% slice(1:30)
 
-stocksToUseForModeling <- data.frame(assetsDataForCurrentTimePeriod[1], subset(assetsDataForCurrentTimePeriod, select=namesOfLowlyCorrelatedStocks[,1]))
+stocksToUseForModeling <- data.frame(subset(assetsDataForCurrentTimePeriod, select=namesOfLowlyCorrelatedStocks[,1]))
+stocksToUseForModelingWithDateAppended <- data.frame(assetsDataForCurrentTimePeriod[1], stocksToUseForModeling)
+stocksToUseForModelingWithDateAppendedTS <- ts(stocksToUseForModelingWithDateAppended)
+stocksToUseForModelingXTS <- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
+
+sumPortfolioLogReturns <- sum(stocksToUseForModeling)
+indexes <- seq(1:ncol(stocksToUseForModeling))
+
+portfolioWeights <- data.frame(Stock=character(), Weight= as.double(double()), stringsAsFactors=FALSE)
+datalist = list()
+for(stockIndex in indexes)
+{
+  currentStock <- stocksToUseForModeling[stockIndex]
+  columnName <- colnames(currentStock)
+  
+  currentStockWithDateAppendedXTS <-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
+  
+  modelARIMA <- auto.arima(currentStockWithDateAppendedXTS)
+  forecastARIMA <- forecast(modelARIMA, h=5)
+  
+  meandf <- as.data.frame(forecastARIMA$mean)
+  colnames(meandf)[colnames(meandf)=="x"] <- columnName
+  # rowTest <- mean[1,]
+  # transposeRow <- t(rowTest)
+  
+  datalist[[stockIndex]] <- meandf
+  # print(rowTest)
+  # print(transposeRow)
+}
+
+forecastedDf <- dplyr::bind_cols(datalist)
+forecastedDf <- as.matrix.data.frame(forecastedDf)
+
+# sumPortfolioLogReturns <- sum(stocksToUseForModeling)
+# indexes <- seq(1:ncol(stocksToUseForModeling))
+
+# portfolioWeights <- data.frame(Stock=character(), Weight= as.double(double()), stringsAsFactors=FALSE)
+# for(stockIndex in indexes)
+# {
+#   currentStock <- stocksToUseForModeling[stockIndex]
+#   sumStockLogReturns <- sum(currentStock)
+#   columnName <- colnames(currentStock)
+# 
+#   stockWeight <- sumStockLogReturns/sumPortfolioLogReturns
+#   portfolioWeights[nrow(portfolioWeights)+1, ] <- c(columnName, stockWeight)
+# }
+
+tickers <- colnames(stocksToUseForModeling)
+# weights <- t(portfolioWeights[2])
+
+meanReturns <- colMeans(stocksToUseForModeling)
+covMat <- cov(stocksToUseForModeling)
+
+portf <- portfolio.spec(tickers)
+portf <- add.constraint(portf, type="full_investment")
+portf <- add.constraint(portf, type ="box", min=.01, max=.95)
+portf <- add.objective(portf, type="return", name="mean")
+portf <- add.objective(portf, type="risk", name="StdDev")
+
+optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = "random", maxSR=TRUE, message=TRUE)
+optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = "ROI", trace=TRUE)
+
+weightsForPortfolio <- as.data.frame(extractWeights(optPort))
+
+multipledMatrix <- as.matrix(forecastedDf) %*% as.matrix(weightsForPortfolio)
+
+necessarySumForThisRollingWindow <- colSums(multipledMatrix)
+necessarySumForThisRollingWindow
 
 # while (index < breakingCondition)
 # {
