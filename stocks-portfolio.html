@@ -198,7 +198,10 @@ $(document).ready(function () {
 </div>
 
 
-<pre class="r"><code>library(zoo)</code></pre>
+<div id="libraries" class="section level1">
+<h1>Libraries</h1>
+<pre class="r"><code>library(tools)
+library(zoo)</code></pre>
 <pre><code>## Warning: package 'zoo' was built under R version 3.5.3</code></pre>
 <pre><code>## 
 ## Attaching package: 'zoo'</code></pre>
@@ -209,7 +212,7 @@ $(document).ready(function () {
 <pre><code>## Warning: package 'forecast' was built under R version 3.5.3</code></pre>
 <pre class="r"><code>library(tidyverse)</code></pre>
 <pre><code>## Warning: package 'tidyverse' was built under R version 3.5.3</code></pre>
-<pre><code>## -- Attaching packages --------------------------------------- tidyverse 1.2.1 --</code></pre>
+<pre><code>## -- Attaching packages ------------------------------------------------------------------------------------------------------------------------------- tidyverse 1.2.1 --</code></pre>
 <pre><code>## v ggplot2 3.1.1     v purrr   0.3.2
 ## v tibble  2.1.3     v dplyr   0.8.1
 ## v tidyr   0.8.3     v stringr 1.4.0
@@ -222,7 +225,7 @@ $(document).ready(function () {
 <pre><code>## Warning: package 'dplyr' was built under R version 3.5.3</code></pre>
 <pre><code>## Warning: package 'stringr' was built under R version 3.5.3</code></pre>
 <pre><code>## Warning: package 'forcats' was built under R version 3.5.3</code></pre>
-<pre><code>## -- Conflicts ------------------------------------------ tidyverse_conflicts() --
+<pre><code>## -- Conflicts ---------------------------------------------------------------------------------------------------------------------------------- tidyverse_conflicts() --
 ## x dplyr::filter() masks stats::filter()
 ## x dplyr::lag()    masks stats::lag()</code></pre>
 <pre class="r"><code>library(PerformanceAnalytics)</code></pre>
@@ -282,9 +285,507 @@ library(quantmod)</code></pre>
 <pre><code>## The following object is masked from 'package:tidyr':
 ## 
 ##     smiths</code></pre>
-<pre class="r"><code>## Merge all the indivdual files together to create my initial data set. 
+</div>
+<div id="merge-all-the-individual-files-together-to-create-two-datasets.-1-date-and-adjusted-close-price-2-date-and-volume" class="section level1">
+<h1>Merge all the individual files together to create two datasets. (1) Date and Adjusted Close Price (2) Date and Volume</h1>
+<pre class="r"><code>multMergeDateAndAdjustedClosePrice &lt;- function(mypath) {
+  filenames&lt;-list.files(path=mypath, full.names=TRUE)
+  datalist &lt;- lapply(filenames, function(x){
+    stockData &lt;- read.csv(file=x,header=T)[,c(&quot;date&quot;, &quot;adjclose&quot;)]
+    colnames(stockData)[2] &lt;- file_path_sans_ext(basename(x))
+    return (stockData)
+    })
+  Reduce(function(x,y) {
+    merge(x,y, by.x = &quot;date&quot;, by.y = &quot;date&quot;, all = TRUE)
+    }, datalist)
+}
 
-# library(tools)
+multMergeDateAndVolume &lt;- function(mypath) {
+  filenames&lt;-list.files(path=mypath, full.names=TRUE)
+  datalist &lt;- lapply(filenames, function(x){
+    stockData &lt;- read.csv(file=x,header=T)[,c(&quot;date&quot;, &quot;volume&quot;)]
+    colnames(stockData)[2] &lt;- file_path_sans_ext(basename(x))
+    return (stockData)
+    })
+  Reduce(function(x,y) {
+    merge(x,y, by.x = &quot;date&quot;, by.y = &quot;date&quot;, all = TRUE)
+    }, datalist)
+}
+
+dateAndAdjustedClosePriceData &lt;- multMergeDateAndAdjustedClosePrice(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\full_history&quot;)
+
+dateAndVolumeData &lt;- multMergeDateAndVolume(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\full_history&quot;)
+
+write.csv(dateAndAdjustedClosePriceData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\DateAndAdjustedClosePriceData.csv&quot;, row.names = FALSE)
+
+write.csv(dateAndVolumeData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\DateAndVolumeData.csv&quot;, row.names = FALSE)</code></pre>
+</div>
+<div id="read-the-data-files-and-order-them-by-date." class="section level1">
+<h1>Read the data files and order them by date.</h1>
+<pre class="r"><code>setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
+
+dateAndAdjustedClosePriceData &lt;- read.csv(file=&quot;DateAndAdjustedClosePriceData.csv&quot;, header=TRUE, sep=&quot;,&quot;)
+dateAndAdjustedClosePriceDataOrderedByDate &lt;- dateAndAdjustedClosePriceData[order(dateAndAdjustedClosePriceData$date),]
+
+dateAndVolumeData &lt;- read.csv(file=&quot;DateAndVolumeData.csv&quot;, header=TRUE, sep=&quot;,&quot;)
+dateAndVolumeDataOrderedByDate &lt;- dateAndVolumeData[order(dateAndVolumeData$date),]
+
+write.csv(dateAndAdjustedClosePriceDataOrderedByDate,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\DateAndAdjustedClosePriceDataOrderedByDate.csv&quot;, row.names = FALSE)
+
+write.csv(dateAndVolumeDataOrderedByDate,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\DateAndVolumeDataOrderedByDate.csv&quot;, row.names = FALSE)</code></pre>
+</div>
+<div id="take-the-final-ten-years-of-data-and-remove-assets-which-have-five-percent-or-more-of-the-data-missing.-remove-assets-which-have-less-than-1000-volume-for-5-or-more-of-the-ten-year-period." class="section level1">
+<h1>Take the final ten years of data and remove assets which have five percent or more of the data missing. Remove assets which have less than 1,000 volume for 5% or more of the ten year period.</h1>
+<pre class="r"><code>setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
+dateAndAdjustedClosePriceDataOrderedByDate &lt;- read.csv(file=&quot;DateAndAdjustedClosePriceDataOrderedByDate.csv&quot;, header=TRUE, sep=&quot;,&quot;)
+dateAndVolumeDataOrderedByDate &lt;- read.csv(file=&quot;DateAndVolumeDataOrderedByDate.csv&quot;, header=TRUE, sep=&quot;,&quot;)
+
+numberOfDays &lt;- nrow(dateAndAdjustedClosePriceDataOrderedByDate)
+financialDaysInYear &lt;- 252
+financialDaysInTenYears &lt;- financialDaysInYear*10
+
+lastDayInTheFinalTenYearPeriod &lt;- numberOfDays
+firstDayInTheFinalTenYearPeriod &lt;- lastDayInTheFinalTenYearPeriod - financialDaysInTenYears
+
+dateAndAdjustedClosePriceDataOrderedByDateForFinalTenYearPeriod &lt;- dateAndAdjustedClosePriceDataOrderedByDate[firstDayInTheFinalTenYearPeriod:lastDayInTheFinalTenYearPeriod, ]
+
+columnNamesWithNinetyFivePercentOfAdjustedClosePriceDataAvailable &lt;- colnames(dateAndAdjustedClosePriceDataOrderedByDateForFinalTenYearPeriod)[as.data.frame(colSums(is.na(dateAndAdjustedClosePriceDataOrderedByDateForFinalTenYearPeriod))/financialDaysInTenYears) &lt;= 0.05]
+
+dateAndVolumeDataOrderedByDateForFinalTenYearPeriod &lt;- dateAndVolumeDataOrderedByDate[firstDayInTheFinalTenYearPeriod:lastDayInTheFinalTenYearPeriod, ]
+dateAndVolumeDataOrderedByDateForFinalTenYearPeriod[is.na(dateAndVolumeDataOrderedByDateForFinalTenYearPeriod)] &lt;- 0
+dateAndVolumeDataOrderedByDateForFinalTenYearPeriod &lt;- apply(dateAndVolumeDataOrderedByDateForFinalTenYearPeriod, 2, function(x) ifelse(x &lt; 1000, &quot;NA&quot;, x))
+
+columnNamesWithNinetyFivePercentOfVolumeDataNotLiquid &lt;- colnames(dateAndVolumeDataOrderedByDateForFinalTenYearPeriod)[as.data.frame(colSums(is.na(dateAndVolumeDataOrderedByDateForFinalTenYearPeriod))/financialDaysInTenYears) &lt;= 0.05]
+
+columnNamesForStocksThatAreVettedToUseInAnalysis &lt;- intersect(as.vector(columnNamesWithNinetyFivePercentOfAdjustedClosePriceDataAvailable), as.vector(columnNamesWithNinetyFivePercentOfAdjustedClosePriceDataAvailable))
+
+finalTenYearsStockHistoryForRelevantStocksConsecutiveNAValues &lt;- subset(dateAndAdjustedClosePriceDataOrderedByDateForFinalTenYearPeriod, select=columnNamesForStocksThatAreVettedToUseInAnalysis)
+
+write.csv(finalTenYearsStockHistoryForRelevantStocksConsecutiveNAValues,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FinalTenYearsStockHistoryForRelevantStocksConsecutiveNAValues.csv&quot;, row.names = FALSE)</code></pre>
+</div>
+<div id="remove-assets-where-there-are-too-many-consecutive-na-values" class="section level1">
+<h1>Remove assets where there are too many consecutive NA values</h1>
+<pre class="r"><code>setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
+finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FinalTenYearsStockHistoryForRelevantStocksConsecutiveNAValues.csv&quot;, header=TRUE, sep=&quot;,&quot;)
+
+columnIndexes &lt;- seq(1,ncol(finalTenYearsStockHistoryData))
+
+columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen &lt;- c()
+for (columnIndex in columnIndexes)
+{
+  stockDataForIteration &lt;- finalTenYearsStockHistoryData[,columnIndex]
+  naBreakdown &lt;- rle(is.na(stockDataForIteration))
+  if(naBreakdown$lengths &gt;= 10 &amp; naBreakdown$values == TRUE) {
+      columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen[columnIndex] &lt;- -columnIndex
+    }
+}
+columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen &lt;- columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen[!is.na(columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen)]
+
+finalTenYearsStockHistoryData &lt;- finalTenYearsStockHistoryData[columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen]
+
+write.csv(finalTenYearsStockHistoryData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FinalTenYearsStockHistoryForRelevantStocksNoNAValues.csv&quot;, row.names = FALSE)</code></pre>
+</div>
+<div id="fill-in-the-missing-na-values-with-reasonable-estimates.-for-the-columns-where-na-is-the-first-value-we-need-to-manually-delete-those.-approximately-3-columns-with-10-na-values-in-total-between-the-3-columns." class="section level1">
+<h1>Fill in the missing NA values with reasonable estimates. For the columns where NA is the first value, we need to manually delete those. Approximately 3 columns with 10 NA values in total between the 3 columns.</h1>
+<pre class="r"><code>setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
+finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FinalTenYearsStockHistoryForRelevantStocksNoNAValues.csv&quot;, header=TRUE, sep=&quot;,&quot;)
+
+columnNames &lt;- colnames(finalTenYearsStockHistoryData)
+
+for (columnName in columnNames)
+{
+  finalTenYearsStockHistoryData &lt;- finalTenYearsStockHistoryData %&gt;% fill(columnName) #default direction down
+}
+
+write.csv(finalTenYearsStockHistoryData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv&quot;, row.names = FALSE)</code></pre>
+</div>
+<div id="compute-the-daily-log-returns-using-adjusted-close-prices." class="section level1">
+<h1>Compute the daily log returns using adjusted close prices.</h1>
+<pre class="r"><code>setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
+finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3909)))
+
+dailyLogReturns &lt;- data.frame(
+   cbind.data.frame(
+     finalTenYearsStockHistoryData$date[-1],
+     diff(as.matrix(log(finalTenYearsStockHistoryData[,-1])))
+     )
+   )
+names(dailyLogReturns)[1]&lt;-&quot;date&quot;
+
+write.csv(dailyLogReturns,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FullLogStockAssetDataPossibleNAValues.csv&quot;, row.names = FALSE)</code></pre>
+</div>
+<div id="need-to-remove-columns-that-have-too-many-na-values-in-them-at-this-point-in-the-log-data-file.-just-remove-all-columns-with-nas-in-them-at-this-point-after-taking-the-logs." class="section level1">
+<h1>Need to remove columns that have too many NA values in them at this point, in the log data file. Just remove all columns with NA’s in them at this point, after taking the logs.</h1>
+<pre class="r"><code>setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
+finalTenYearsStockHistoryData &lt;- read.csv(file=&quot;FullLogStockAssetDataPossibleNAValues.csv&quot;, header=TRUE, sep=&quot;,&quot;)
+
+finalTenYearsStockHistoryData &lt;- finalTenYearsStockHistoryData[ , colSums(is.na(finalTenYearsStockHistoryData)) == 0]
+
+write.csv(finalTenYearsStockHistoryData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FullLogStockAssetDataFilteredForNA.csv&quot;, row.names = FALSE)</code></pre>
+</div>
+<div id="detect-and-replace-the-outliers-with-estimates-that-are-more-consistent-with-the-majority-of-the-data" class="section level1">
+<h1>Detect and replace the outliers with estimates that are more consistent with the majority of the data</h1>
+<pre class="r"><code>setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
+fullLogAssetData &lt;- read.csv(file=&quot;FullLogStockAssetDataFilteredForNA.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3906)))
+
+winsor1 &lt;- function (x, fraction=.05)
+{
+   if(length(fraction) != 1 || fraction &lt; 0 ||
+         fraction &gt; 0.5) {
+      stop(&quot;bad value for 'fraction'&quot;)
+   }
+   lim &lt;- quantile(x, probs=c(fraction, 1-fraction))
+   x[ x &lt; lim[1] ] &lt;- lim[1]
+   x[ x &gt; lim[2] ] &lt;- lim[2]
+   x
+}
+
+columnIndexes &lt;- seq(2,ncol(fullLogAssetData))
+
+for (columnIndex in columnIndexes) {
+  fullLogAssetData[,columnIndex] &lt;- winsor1(fullLogAssetData[,columnIndex])
+}
+
+write.csv(fullLogAssetData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FullLogStockAssetDataFittedForOutliers.csv&quot;, row.names = FALSE)</code></pre>
+</div>
+<div id="portfolio-optimization" class="section level1">
+<h1>Portfolio Optimization</h1>
+<pre class="r"><code>options(scipen = 999)
+setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
+fittedFullLogAssetData &lt;- read.csv(file=&quot;FullLogStockAssetDataFittedForOutliers.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3906)))
+dim(fittedFullLogAssetData)</code></pre>
+<pre><code>## [1] 2520 3907</code></pre>
+<pre class="r"><code>fittedFullLogAssetData &lt;- fittedFullLogAssetData[-1,]
+dim(fittedFullLogAssetData)</code></pre>
+<pre><code>## [1] 2519 3907</code></pre>
+<pre class="r"><code>numberOfRows &lt;- nrow(fittedFullLogAssetData)
+numberOfColumns &lt;- ncol(fittedFullLogAssetData)
+
+
+h &lt;- 5
+m &lt;- 252
+
+breakingCondition &lt;- numberOfRows + h
+
+index &lt;- 0
+
+listOftotalReturnsForEachForecastedPeriod &lt;- list()
+while (TRUE)
+{
+  stockIndexes &lt;- seq(2,numberOfColumns)
+
+  startRow &lt;- (h*index) + 1
+  endRow &lt;- (h*index) + m
+
+  assetsDataForCurrentTimePeriod &lt;- fittedFullLogAssetData[startRow:endRow,]
+  sharpeRatiosWithStockIndex &lt;- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
+
+  for (stockIndex in stockIndexes)
+  {
+    currentAssetDataForStockIndex &lt;- assetsDataForCurrentTimePeriod[,c(1,stockIndex)]
+    currentAssetDataForStockIndexTimeSeries &lt;- ts(currentAssetDataForStockIndex)
+    columnName &lt;- colnames(currentAssetDataForStockIndex)[2]
+
+    sharpeRatio &lt;- round(SharpeRatio(currentAssetDataForStockIndexTimeSeries, Rf = .0003, FUN=&quot;StdDev&quot;), 4)
+
+    sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] &lt;- c(columnName, sharpeRatio[1,2])
+  }
+
+  stockNamesWithHighestSharpeRatios &lt;- sharpeRatiosWithStockIndex %&gt;% arrange(desc(SharpeRatio))
+  stockNamesWithHighestSharpeRatios &lt;- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
+
+  stocksWithHighestSharpeRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
+
+  correlationBetweenTheStocks &lt;- stocksWithHighestSharpeRatios %&gt;% correlate() %&gt;% stretch() %&gt;% arrange(abs(r))
+
+  namesOfLowlyCorrelatedStocks &lt;- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %&gt;% unique()
+  namesOfLowlyCorrelatedStocks &lt;- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
+
+  stocksToUseForModeling &lt;- assetsDataForCurrentTimePeriod[, as.vector(namesOfLowlyCorrelatedStocks[,1])]
+  stocksToUseForModelingWithDateAppended &lt;- data.frame(assetsDataForCurrentTimePeriod[,1], stocksToUseForModeling)
+  stocksToUseForModelingXTS &lt;- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
+
+  stockIndexes &lt;- seq(1:ncol(stocksToUseForModeling))
+
+  forecastedLogReturnsForStocksList = list()
+  for(stockIndex in stockIndexes)
+  {
+    currentStock &lt;- stocksToUseForModeling[stockIndex]
+    columnName &lt;- colnames(currentStock)
+
+    currentStockWithDateAppendedXTS &lt;-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
+
+    modelARIMA &lt;- auto.arima(currentStockWithDateAppendedXTS)
+    forecastARIMA &lt;- forecast(modelARIMA, h=h)
+
+    forcastedLogReturnsForCurrentStock &lt;- as.data.frame(forecastARIMA$mean)
+    colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
+
+    forecastedLogReturnsForStocksList[[stockIndex]] &lt;- forcastedLogReturnsForCurrentStock
+  }
+
+  forecastedLogReturnsForStocks &lt;- dplyr::bind_cols(forecastedLogReturnsForStocksList)
+  forecastedLogReturnsForStocks &lt;- as.matrix.data.frame(forecastedLogReturnsForStocks)
+
+  tickers &lt;- colnames(stocksToUseForModeling)
+
+  meanReturns &lt;- colMeans(stocksToUseForModeling)
+  covMat &lt;- cov(stocksToUseForModeling)
+
+  portf &lt;- portfolio.spec(tickers)
+  portf &lt;- add.constraint(portf, type=&quot;full_investment&quot;)
+  portf &lt;- add.constraint(portf, type =&quot;box&quot;, min=.01, max=.05)
+  portf &lt;- add.objective(portf, type=&quot;return&quot;, name=&quot;mean&quot;)
+  portf &lt;- add.objective(portf, type=&quot;risk&quot;, name=&quot;StdDev&quot;)
+
+  # optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = &quot;ROI&quot;, trace=TRUE)
+  optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method='random',maxSR=TRUE, message=TRUE)
+
+  weightsForPortfolio &lt;- as.data.frame(extractWeights(optPort))
+
+  print(weightsForPortfolio)
+
+  totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
+
+  totalReturnForTheForecastingWindow &lt;- unname(colSums(totalReturnsForTheForecastingWindowByDay))
+  listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnForTheForecastingWindow
+
+  # if (endRow &gt; breakingCondition)
+  if (endRow &gt; 272)
+  {
+    break
+  }
+  index &lt;- index + 1
+}</code></pre>
+<pre><code>## 
+## Correlation method: 'pearson'
+## Missing treated using: 'pairwise.complete.obs'</code></pre>
+<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
+##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
+<pre><code>## Warning: executing %dopar% sequentially: no parallel backend registered</code></pre>
+<pre><code>## elapsed time:13.0588819980621</code></pre>
+<pre><code>##     extractWeights(optPort)
+## MPA                   0.046
+## BGT                   0.010
+## AEH                   0.044
+## BAF                   0.044
+## AED                   0.022
+## MYD                   0.038
+## PFN                   0.016
+## MIY                   0.050
+## AEB                   0.024
+## DHF                   0.034
+## HYT                   0.016
+## PCM                   0.038
+## AKP                   0.044
+## FLC                   0.020
+## PGF                   0.030
+## PCN                   0.026
+## MYN                   0.050
+## VVR                   0.020
+## VLT                   0.024
+## FAM                   0.044
+## TLI                   0.044
+## NSL                   0.030
+## HNW                   0.050
+## PGX                   0.042
+## EVF                   0.036
+## FEO                   0.026
+## PFF                   0.032
+## AWF                   0.014
+## FRA                   0.040
+## HPI                   0.046</code></pre>
+<pre><code>## 
+## Correlation method: 'pearson'
+## Missing treated using: 'pairwise.complete.obs'
+## 
+## Leverage constraint min_sum and max_sum are restrictive, 
+##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
+<pre><code>## elapsed time:13.0578000545502</code></pre>
+<pre><code>##      extractWeights(optPort)
+## DDT                    0.050
+## IQI                    0.046
+## HGSH                   0.014
+## FEO                    0.014
+## HYB                    0.032
+## VRNT                   0.038
+## AED                    0.048
+## MPA                    0.038
+## EFT                    0.022
+## BTZ                    0.048
+## MYN                    0.050
+## ISF                    0.030
+## HPF                    0.038
+## MSB                    0.010
+## MIY                    0.048
+## PFN                    0.048
+## NSL                    0.048
+## JQC                    0.018
+## PGX                    0.042
+## AWF                    0.024
+## PCM                    0.022
+## AKP                    0.036
+## HPS                    0.010
+## JRO                    0.046
+## DHF                    0.036
+## EFR                    0.030
+## NAD                    0.050
+## ERC                    0.022
+## HYT                    0.012
+## FRA                    0.030</code></pre>
+<pre><code>## 
+## Correlation method: 'pearson'
+## Missing treated using: 'pairwise.complete.obs'</code></pre>
+<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
+##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
+<pre><code>## elapsed time:13.2591819763184</code></pre>
+<pre><code>##      extractWeights(optPort)
+## DDT                    0.048
+## JHI                    0.048
+## HGSH                   0.024
+## JPC                    0.034
+## HYB                    0.020
+## HPF                    0.028
+## PPT                    0.046
+## EHI                    0.028
+## AWF                    0.034
+## EFR                    0.042
+## BTZ                    0.050
+## VRNT                   0.048
+## NAD                    0.046
+## DHF                    0.036
+## PFN                    0.014
+## EVF                    0.024
+## NSL                    0.044
+## PGF                    0.010
+## MYN                    0.040
+## HPI                    0.014
+## EVV                    0.044
+## JQC                    0.010
+## VVR                    0.044
+## ERC                    0.044
+## FEO                    0.018
+## MSD                    0.048
+## AEB                    0.040
+## JRO                    0.020
+## FAM                    0.036
+## JFR                    0.018</code></pre>
+<pre><code>## 
+## Correlation method: 'pearson'
+## Missing treated using: 'pairwise.complete.obs'</code></pre>
+<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
+##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
+<pre><code>## elapsed time:13.1605439186096</code></pre>
+<pre><code>##      extractWeights(optPort)
+## AWF                    0.044
+## HGSH                   0.046
+## BTZ                    0.046
+## JPC                    0.016
+## HPF                    0.020
+## DDT                    0.050
+## VRNT                   0.022
+## PPT                    0.050
+## LTM                    0.016
+## JHI                    0.050
+## NSL                    0.044
+## EHI                    0.034
+## HYB                    0.020
+## DHF                    0.046
+## PGF                    0.018
+## EFR                    0.020
+## EVF                    0.048
+## PFN                    0.040
+## PGX                    0.050
+## JQC                    0.030
+## EVV                    0.046
+## FAM                    0.022
+## FEO                    0.028
+## JFR                    0.018
+## JRO                    0.016
+## BGT                    0.036
+## HPI                    0.030
+## ERC                    0.022
+## MSD                    0.048
+## AEB                    0.024</code></pre>
+<pre><code>## 
+## Correlation method: 'pearson'
+## Missing treated using: 'pairwise.complete.obs'</code></pre>
+<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
+##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
+<pre><code>## elapsed time:13.1406810283661</code></pre>
+<pre><code>##      extractWeights(optPort)
+## HGSH                   0.020
+## PPT                    0.024
+## PFF                    0.014
+## HNW                    0.046
+## PDT                    0.046
+## NSL                    0.044
+## GORO                   0.010
+## HPF                    0.010
+## JHI                    0.018
+## EVF                    0.048
+## EVV                    0.042
+## MYN                    0.050
+## AFC                    0.042
+## DDT                    0.050
+## EHI                    0.018
+## HYB                    0.046
+## AEH                    0.038
+## BTZ                    0.050
+## AED                    0.048
+## MSD                    0.046
+## CQP                    0.012
+## PCM                    0.036
+## FAM                    0.050
+## PGF                    0.034
+## FEO                    0.022
+## EFR                    0.034
+## HPI                    0.022
+## ERC                    0.042
+## PFN                    0.010
+## JPC                    0.028</code></pre>
+<pre><code>## 
+## Correlation method: 'pearson'
+## Missing treated using: 'pairwise.complete.obs'</code></pre>
+<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
+##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
+<pre><code>## elapsed time:13.1586730480194</code></pre>
+<pre><code>##      extractWeights(optPort)
+## HGSH                   0.028
+## PPT                    0.044
+## NHS                    0.040
+## AFC                    0.038
+## LTM                    0.016
+## MO                     0.042
+## HYB                    0.038
+## NSL                    0.042
+## GORO                   0.010
+## AEH                    0.018
+## EVF                    0.046
+## VRNT                   0.050
+## DDT                    0.038
+## ERC                    0.040
+## MSD                    0.036
+## BCH                    0.016
+## HPF                    0.020
+## ITCB                   0.030
+## JRO                    0.012
+## FAM                    0.028
+## HNW                    0.014
+## BGT                    0.022
+## FEO                    0.024
+## AED                    0.050
+## EFR                    0.028
+## EHI                    0.050
+## PCM                    0.050
+## AEB                    0.048
+## FRA                    0.034
+## EFT                    0.048</code></pre>
+<pre class="r"><code>totalReturnsForEachForecastedPeriod &lt;- dplyr::bind_cols(listOftotalReturnsForEachForecastedPeriod)
+totalReturnsForEachForecastedPeriod &lt;- as.data.frame(totalReturnsForEachForecastedPeriod)
+
+write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturns.csv&quot;, row.names = FALSE)</code></pre>
+<pre class="r"><code>## Merge all the indivdual files together to create the date and adjust. 
 
 # multmerge &lt;- function(mypath) {
 #   filenames&lt;-list.files(path=mypath, full.names=TRUE)
@@ -453,343 +954,121 @@ library(quantmod)</code></pre>
 # 
 # write.csv(fullLogAssetData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FittedFullLogStockAssetData.csv&quot;, row.names = FALSE)
 
-## Now we look into portfolio optimization.
-
-options(scipen = 999)
-setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
-fittedFullLogAssetData &lt;- read.csv(file=&quot;FittedFullLogStockAssetData.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3906)))
-dim(fittedFullLogAssetData)</code></pre>
-<pre><code>## [1] 2520 3907</code></pre>
-<pre class="r"><code>fittedFullLogAssetData &lt;- fittedFullLogAssetData[-1,]
-dim(fittedFullLogAssetData)</code></pre>
-<pre><code>## [1] 2519 3907</code></pre>
-<pre class="r"><code>numberOfRows &lt;- nrow(fittedFullLogAssetData)
-numberOfColumns &lt;- ncol(fittedFullLogAssetData)
-
-
-h &lt;- 5
-m &lt;- 252
-
-breakingCondition &lt;- numberOfRows + h
-
-index &lt;- 0
-
-listOftotalReturnsForEachForecastedPeriod &lt;- list()
-while (TRUE)
-{
-  stockIndexes &lt;- seq(2,numberOfColumns)
-  
-  startRow &lt;- (h*index) + 1
-  endRow &lt;- (h*index) + m
-  
-  assetsDataForCurrentTimePeriod &lt;- fittedFullLogAssetData[startRow:endRow,]
-  sharpeRatiosWithStockIndex &lt;- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
-  
-  for (stockIndex in stockIndexes)
-  {
-    currentAssetDataForStockIndex &lt;- assetsDataForCurrentTimePeriod[,c(1,stockIndex)]
-    currentAssetDataForStockIndexTimeSeries &lt;- ts(currentAssetDataForStockIndex)
-    columnName &lt;- colnames(currentAssetDataForStockIndex)[2]
-    
-    sharpeRatio &lt;- round(SharpeRatio(currentAssetDataForStockIndexTimeSeries, Rf = .0003, FUN=&quot;StdDev&quot;), 4)
-    
-    sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] &lt;- c(columnName, sharpeRatio[1,2])
-  }
-  
-  stockNamesWithHighestSharpeRatios &lt;- sharpeRatiosWithStockIndex %&gt;% arrange(desc(SharpeRatio))
-  stockNamesWithHighestSharpeRatios &lt;- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
-
-  stocksWithHighestSharpeRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
-
-  correlationBetweenTheStocks &lt;- stocksWithHighestSharpeRatios %&gt;% correlate() %&gt;% stretch() %&gt;% arrange(abs(r))
-
-  namesOfLowlyCorrelatedStocks &lt;- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %&gt;% unique()
-  namesOfLowlyCorrelatedStocks &lt;- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
-
-  stocksToUseForModeling &lt;- assetsDataForCurrentTimePeriod[, as.vector(namesOfLowlyCorrelatedStocks[,1])]
-  stocksToUseForModelingWithDateAppended &lt;- data.frame(assetsDataForCurrentTimePeriod[,1], stocksToUseForModeling)
-  stocksToUseForModelingXTS &lt;- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
-
-  stockIndexes &lt;- seq(1:ncol(stocksToUseForModeling))
-
-  forecastedLogReturnsForStocksList = list()
-  for(stockIndex in stockIndexes)
-  {
-    currentStock &lt;- stocksToUseForModeling[stockIndex]
-    columnName &lt;- colnames(currentStock)
-
-    currentStockWithDateAppendedXTS &lt;-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
-
-    modelARIMA &lt;- auto.arima(currentStockWithDateAppendedXTS)
-    forecastARIMA &lt;- forecast(modelARIMA, h=h)
-
-    forcastedLogReturnsForCurrentStock &lt;- as.data.frame(forecastARIMA$mean)
-    colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
-
-    forecastedLogReturnsForStocksList[[stockIndex]] &lt;- forcastedLogReturnsForCurrentStock
-  }
-
-  forecastedLogReturnsForStocks &lt;- dplyr::bind_cols(forecastedLogReturnsForStocksList)
-  forecastedLogReturnsForStocks &lt;- as.matrix.data.frame(forecastedLogReturnsForStocks)
-
-  tickers &lt;- colnames(stocksToUseForModeling)
-
-  meanReturns &lt;- colMeans(stocksToUseForModeling)
-  covMat &lt;- cov(stocksToUseForModeling)
-
-  portf &lt;- portfolio.spec(tickers)
-  portf &lt;- add.constraint(portf, type=&quot;full_investment&quot;)
-  portf &lt;- add.constraint(portf, type =&quot;box&quot;, min=.01, max=.05)
-  portf &lt;- add.objective(portf, type=&quot;return&quot;, name=&quot;mean&quot;)
-  portf &lt;- add.objective(portf, type=&quot;risk&quot;, name=&quot;StdDev&quot;)
-
-  # optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = &quot;ROI&quot;, trace=TRUE)
-  optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method='random',maxSR=TRUE, message=TRUE)
-
-  weightsForPortfolio &lt;- as.data.frame(extractWeights(optPort))
-  
-  print(weightsForPortfolio)
-
-  totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
-
-  totalReturnForTheForecastingWindow &lt;- unname(colSums(totalReturnsForTheForecastingWindowByDay))
-  listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnForTheForecastingWindow
-
-  # if (endRow &gt; breakingCondition)
-  if (endRow &gt; 272)
-  {
-    break
-  }
-  index &lt;- index + 1
-}</code></pre>
-<pre><code>## 
-## Correlation method: 'pearson'
-## Missing treated using: 'pairwise.complete.obs'</code></pre>
-<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## Warning: executing %dopar% sequentially: no parallel backend registered</code></pre>
-<pre><code>## elapsed time:16.2479608058929</code></pre>
-<pre><code>##     extractWeights(optPort)
-## MPA                   0.044
-## BGT                   0.022
-## AEH                   0.026
-## BAF                   0.048
-## AED                   0.042
-## MYD                   0.042
-## PFN                   0.010
-## MIY                   0.044
-## AEB                   0.040
-## DHF                   0.048
-## HYT                   0.032
-## PCM                   0.014
-## AKP                   0.050
-## FLC                   0.032
-## PGF                   0.030
-## PCN                   0.044
-## MYN                   0.050
-## VVR                   0.020
-## VLT                   0.048
-## FAM                   0.022
-## TLI                   0.048
-## NSL                   0.040
-## HNW                   0.032
-## PGX                   0.034
-## EVF                   0.050
-## FEO                   0.012
-## PFF                   0.014
-## AWF                   0.020
-## FRA                   0.030
-## HPI                   0.012</code></pre>
-<pre><code>## 
-## Correlation method: 'pearson'
-## Missing treated using: 'pairwise.complete.obs'
-## 
-## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## elapsed time:15.1742820739746</code></pre>
-<pre><code>##      extractWeights(optPort)
-## DDT                    0.042
-## IQI                    0.050
-## HGSH                   0.012
-## FEO                    0.012
-## HYB                    0.032
-## VRNT                   0.046
-## AED                    0.050
-## MPA                    0.024
-## EFT                    0.046
-## BTZ                    0.048
-## MYN                    0.050
-## ISF                    0.046
-## HPF                    0.014
-## MSB                    0.020
-## MIY                    0.040
-## PFN                    0.012
-## NSL                    0.048
-## JQC                    0.036
-## PGX                    0.038
-## AWF                    0.044
-## PCM                    0.048
-## AKP                    0.050
-## HPS                    0.012
-## JRO                    0.020
-## DHF                    0.022
-## EFR                    0.030
-## NAD                    0.040
-## ERC                    0.036
-## HYT                    0.010
-## FRA                    0.022</code></pre>
-<pre><code>## 
-## Correlation method: 'pearson'
-## Missing treated using: 'pairwise.complete.obs'</code></pre>
-<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## elapsed time:14.9946100711823</code></pre>
-<pre><code>##      extractWeights(optPort)
-## DDT                    0.050
-## JHI                    0.042
-## HGSH                   0.018
-## JPC                    0.022
-## HYB                    0.016
-## HPF                    0.038
-## PPT                    0.044
-## EHI                    0.024
-## AWF                    0.042
-## EFR                    0.018
-## BTZ                    0.044
-## VRNT                   0.038
-## NAD                    0.050
-## DHF                    0.018
-## PFN                    0.038
-## EVF                    0.040
-## NSL                    0.036
-## PGF                    0.030
-## MYN                    0.050
-## HPI                    0.018
-## EVV                    0.050
-## JQC                    0.044
-## VVR                    0.010
-## ERC                    0.046
-## FEO                    0.012
-## MSD                    0.050
-## AEB                    0.014
-## JRO                    0.044
-## FAM                    0.016
-## JFR                    0.038</code></pre>
-<pre><code>## 
-## Correlation method: 'pearson'
-## Missing treated using: 'pairwise.complete.obs'</code></pre>
-<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## elapsed time:16.4391210079193</code></pre>
-<pre><code>##      extractWeights(optPort)
-## AWF                    0.026
-## HGSH                   0.028
-## BTZ                    0.050
-## JPC                    0.030
-## HPF                    0.014
-## DDT                    0.040
-## VRNT                   0.022
-## PPT                    0.044
-## LTM                    0.026
-## JHI                    0.050
-## NSL                    0.048
-## EHI                    0.022
-## HYB                    0.022
-## DHF                    0.036
-## PGF                    0.042
-## EFR                    0.038
-## EVF                    0.050
-## PFN                    0.036
-## PGX                    0.050
-## JQC                    0.028
-## EVV                    0.016
-## FAM                    0.050
-## FEO                    0.012
-## JFR                    0.020
-## JRO                    0.020
-## BGT                    0.020
-## HPI                    0.046
-## ERC                    0.040
-## MSD                    0.038
-## AEB                    0.036</code></pre>
-<pre><code>## 
-## Correlation method: 'pearson'
-## Missing treated using: 'pairwise.complete.obs'</code></pre>
-<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## elapsed time:18.6839001178741</code></pre>
-<pre><code>##      extractWeights(optPort)
-## HGSH                   0.036
-## PPT                    0.044
-## PFF                    0.032
-## HNW                    0.032
-## PDT                    0.048
-## NSL                    0.040
-## GORO                   0.024
-## HPF                    0.012
-## JHI                    0.042
-## EVF                    0.050
-## EVV                    0.026
-## MYN                    0.044
-## AFC                    0.044
-## DDT                    0.048
-## EHI                    0.050
-## HYB                    0.046
-## AEH                    0.048
-## BTZ                    0.016
-## AED                    0.018
-## MSD                    0.040
-## CQP                    0.010
-## PCM                    0.026
-## FAM                    0.032
-## PGF                    0.014
-## FEO                    0.012
-## EFR                    0.010
-## HPI                    0.034
-## ERC                    0.044
-## PFN                    0.030
-## JPC                    0.048</code></pre>
-<pre><code>## 
-## Correlation method: 'pearson'
-## Missing treated using: 'pairwise.complete.obs'</code></pre>
-<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## elapsed time:19.6285538673401</code></pre>
-<pre><code>##      extractWeights(optPort)
-## HGSH                   0.042
-## PPT                    0.038
-## NHS                    0.040
-## AFC                    0.048
-## LTM                    0.010
-## MO                     0.042
-## HYB                    0.036
-## NSL                    0.050
-## GORO                   0.022
-## AEH                    0.046
-## EVF                    0.042
-## VRNT                   0.018
-## DDT                    0.048
-## ERC                    0.032
-## MSD                    0.042
-## BCH                    0.040
-## HPF                    0.012
-## ITCB                   0.042
-## JRO                    0.022
-## FAM                    0.014
-## HNW                    0.044
-## BGT                    0.036
-## FEO                    0.010
-## AED                    0.030
-## EFR                    0.010
-## EHI                    0.042
-## PCM                    0.048
-## AEB                    0.032
-## FRA                    0.036
-## EFT                    0.026</code></pre>
-<pre class="r"><code>totalReturnsForEachForecastedPeriod &lt;- dplyr::bind_cols(listOftotalReturnsForEachForecastedPeriod)
-totalReturnsForEachForecastedPeriod &lt;- as.data.frame(totalReturnsForEachForecastedPeriod)
-
-write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\MyPortfolioReturns.csv&quot;, row.names = FALSE)</code></pre>
+# ## Now we look into portfolio optimization.
+# 
+# options(scipen = 999)
+# setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories&quot;)
+# fittedFullLogAssetData &lt;- read.csv(file=&quot;FittedFullLogStockAssetData.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3906)))
+# dim(fittedFullLogAssetData)
+# fittedFullLogAssetData &lt;- fittedFullLogAssetData[-1,]
+# dim(fittedFullLogAssetData)
+# 
+# 
+# numberOfRows &lt;- nrow(fittedFullLogAssetData)
+# numberOfColumns &lt;- ncol(fittedFullLogAssetData)
+# 
+# 
+# h &lt;- 5
+# m &lt;- 252
+# 
+# breakingCondition &lt;- numberOfRows + h
+# 
+# index &lt;- 0
+# 
+# listOftotalReturnsForEachForecastedPeriod &lt;- list()
+# while (TRUE)
+# {
+#   stockIndexes &lt;- seq(2,numberOfColumns)
+#   
+#   startRow &lt;- (h*index) + 1
+#   endRow &lt;- (h*index) + m
+#   
+#   assetsDataForCurrentTimePeriod &lt;- fittedFullLogAssetData[startRow:endRow,]
+#   sharpeRatiosWithStockIndex &lt;- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
+#   
+#   for (stockIndex in stockIndexes)
+#   {
+#     currentAssetDataForStockIndex &lt;- assetsDataForCurrentTimePeriod[,c(1,stockIndex)]
+#     currentAssetDataForStockIndexTimeSeries &lt;- ts(currentAssetDataForStockIndex)
+#     columnName &lt;- colnames(currentAssetDataForStockIndex)[2]
+#     
+#     sharpeRatio &lt;- round(SharpeRatio(currentAssetDataForStockIndexTimeSeries, Rf = .0003, FUN=&quot;StdDev&quot;), 4)
+#     
+#     sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] &lt;- c(columnName, sharpeRatio[1,2])
+#   }
+#   
+#   stockNamesWithHighestSharpeRatios &lt;- sharpeRatiosWithStockIndex %&gt;% arrange(desc(SharpeRatio))
+#   stockNamesWithHighestSharpeRatios &lt;- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
+# 
+#   stocksWithHighestSharpeRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
+# 
+#   correlationBetweenTheStocks &lt;- stocksWithHighestSharpeRatios %&gt;% correlate() %&gt;% stretch() %&gt;% arrange(abs(r))
+# 
+#   namesOfLowlyCorrelatedStocks &lt;- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %&gt;% unique()
+#   namesOfLowlyCorrelatedStocks &lt;- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
+# 
+#   stocksToUseForModeling &lt;- assetsDataForCurrentTimePeriod[, as.vector(namesOfLowlyCorrelatedStocks[,1])]
+#   stocksToUseForModelingWithDateAppended &lt;- data.frame(assetsDataForCurrentTimePeriod[,1], stocksToUseForModeling)
+#   stocksToUseForModelingXTS &lt;- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
+# 
+#   stockIndexes &lt;- seq(1:ncol(stocksToUseForModeling))
+# 
+#   forecastedLogReturnsForStocksList = list()
+#   for(stockIndex in stockIndexes)
+#   {
+#     currentStock &lt;- stocksToUseForModeling[stockIndex]
+#     columnName &lt;- colnames(currentStock)
+# 
+#     currentStockWithDateAppendedXTS &lt;-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
+# 
+#     modelARIMA &lt;- auto.arima(currentStockWithDateAppendedXTS)
+#     forecastARIMA &lt;- forecast(modelARIMA, h=h)
+# 
+#     forcastedLogReturnsForCurrentStock &lt;- as.data.frame(forecastARIMA$mean)
+#     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
+# 
+#     forecastedLogReturnsForStocksList[[stockIndex]] &lt;- forcastedLogReturnsForCurrentStock
+#   }
+# 
+#   forecastedLogReturnsForStocks &lt;- dplyr::bind_cols(forecastedLogReturnsForStocksList)
+#   forecastedLogReturnsForStocks &lt;- as.matrix.data.frame(forecastedLogReturnsForStocks)
+# 
+#   tickers &lt;- colnames(stocksToUseForModeling)
+# 
+#   meanReturns &lt;- colMeans(stocksToUseForModeling)
+#   covMat &lt;- cov(stocksToUseForModeling)
+# 
+#   portf &lt;- portfolio.spec(tickers)
+#   portf &lt;- add.constraint(portf, type=&quot;full_investment&quot;)
+#   portf &lt;- add.constraint(portf, type =&quot;box&quot;, min=.01, max=.05)
+#   portf &lt;- add.objective(portf, type=&quot;return&quot;, name=&quot;mean&quot;)
+#   portf &lt;- add.objective(portf, type=&quot;risk&quot;, name=&quot;StdDev&quot;)
+# 
+#   # optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = &quot;ROI&quot;, trace=TRUE)
+#   optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method='random',maxSR=TRUE, message=TRUE)
+# 
+#   weightsForPortfolio &lt;- as.data.frame(extractWeights(optPort))
+#   
+#   print(weightsForPortfolio)
+# 
+#   totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
+# 
+#   totalReturnForTheForecastingWindow &lt;- unname(colSums(totalReturnsForTheForecastingWindowByDay))
+#   listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnForTheForecastingWindow
+# 
+#   # if (endRow &gt; breakingCondition)
+#   if (endRow &gt; 272)
+#   {
+#     break
+#   }
+#   index &lt;- index + 1
+# }
+# 
+# totalReturnsForEachForecastedPeriod &lt;- dplyr::bind_cols(listOftotalReturnsForEachForecastedPeriod)
+# totalReturnsForEachForecastedPeriod &lt;- as.data.frame(totalReturnsForEachForecastedPeriod)
+# 
+# write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\MyPortfolioReturns.csv&quot;, row.names = FALSE)</code></pre>
+</div>
 
 
 

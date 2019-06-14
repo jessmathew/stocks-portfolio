@@ -11,7 +11,9 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Libraries
 ```{r}
+library(tools)
 library(zoo)
 library(forecast)
 library(tidyverse)
@@ -28,10 +30,298 @@ library(ROI.plugin.quadprog)
 library(ROI.plugin.symphony)
 library(tsbox)
 library(reshape2)
+```
 
-## Merge all the indivdual files together to create my initial data set. 
+# Merge all the individual files together to create two datasets. (1) Date and Adjusted Close Price (2) Date and Volume
+```{r eval=FALSE}
+multMergeDateAndAdjustedClosePrice <- function(mypath) {
+  filenames<-list.files(path=mypath, full.names=TRUE)
+  datalist <- lapply(filenames, function(x){
+    stockData <- read.csv(file=x,header=T)[,c("date", "adjclose")]
+    colnames(stockData)[2] <- file_path_sans_ext(basename(x))
+    return (stockData)
+    })
+  Reduce(function(x,y) {
+    merge(x,y, by.x = "date", by.y = "date", all = TRUE)
+    }, datalist)
+}
 
-# library(tools)
+multMergeDateAndVolume <- function(mypath) {
+  filenames<-list.files(path=mypath, full.names=TRUE)
+  datalist <- lapply(filenames, function(x){
+    stockData <- read.csv(file=x,header=T)[,c("date", "volume")]
+    colnames(stockData)[2] <- file_path_sans_ext(basename(x))
+    return (stockData)
+    })
+  Reduce(function(x,y) {
+    merge(x,y, by.x = "date", by.y = "date", all = TRUE)
+    }, datalist)
+}
+
+dateAndAdjustedClosePriceData <- multMergeDateAndAdjustedClosePrice("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\full_history")
+
+dateAndVolumeData <- multMergeDateAndVolume("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\full_history")
+
+write.csv(dateAndAdjustedClosePriceData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\DateAndAdjustedClosePriceData.csv", row.names = FALSE)
+
+write.csv(dateAndVolumeData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\DateAndVolumeData.csv", row.names = FALSE)
+```
+
+# Read the data files and order them by date.
+```{r eval=FALSE}
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+
+dateAndAdjustedClosePriceData <- read.csv(file="DateAndAdjustedClosePriceData.csv", header=TRUE, sep=",")
+dateAndAdjustedClosePriceDataOrderedByDate <- dateAndAdjustedClosePriceData[order(dateAndAdjustedClosePriceData$date),]
+
+dateAndVolumeData <- read.csv(file="DateAndVolumeData.csv", header=TRUE, sep=",")
+dateAndVolumeDataOrderedByDate <- dateAndVolumeData[order(dateAndVolumeData$date),]
+
+write.csv(dateAndAdjustedClosePriceDataOrderedByDate,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\DateAndAdjustedClosePriceDataOrderedByDate.csv", row.names = FALSE)
+
+write.csv(dateAndVolumeDataOrderedByDate,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\DateAndVolumeDataOrderedByDate.csv", row.names = FALSE)
+```
+
+# Take the final ten years of data and remove assets which have five percent or more of the data missing. Remove assets which have less than 1,000 volume for 5% or more of the ten year period.
+```{r eval=FALSE}
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+dateAndAdjustedClosePriceDataOrderedByDate <- read.csv(file="DateAndAdjustedClosePriceDataOrderedByDate.csv", header=TRUE, sep=",")
+dateAndVolumeDataOrderedByDate <- read.csv(file="DateAndVolumeDataOrderedByDate.csv", header=TRUE, sep=",")
+
+numberOfDays <- nrow(dateAndAdjustedClosePriceDataOrderedByDate)
+financialDaysInYear <- 252
+financialDaysInTenYears <- financialDaysInYear*10
+
+lastDayInTheFinalTenYearPeriod <- numberOfDays
+firstDayInTheFinalTenYearPeriod <- lastDayInTheFinalTenYearPeriod - financialDaysInTenYears
+
+dateAndAdjustedClosePriceDataOrderedByDateForFinalTenYearPeriod <- dateAndAdjustedClosePriceDataOrderedByDate[firstDayInTheFinalTenYearPeriod:lastDayInTheFinalTenYearPeriod, ]
+
+columnNamesWithNinetyFivePercentOfAdjustedClosePriceDataAvailable <- colnames(dateAndAdjustedClosePriceDataOrderedByDateForFinalTenYearPeriod)[as.data.frame(colSums(is.na(dateAndAdjustedClosePriceDataOrderedByDateForFinalTenYearPeriod))/financialDaysInTenYears) <= 0.05]
+
+dateAndVolumeDataOrderedByDateForFinalTenYearPeriod <- dateAndVolumeDataOrderedByDate[firstDayInTheFinalTenYearPeriod:lastDayInTheFinalTenYearPeriod, ]
+dateAndVolumeDataOrderedByDateForFinalTenYearPeriod[is.na(dateAndVolumeDataOrderedByDateForFinalTenYearPeriod)] <- 0
+dateAndVolumeDataOrderedByDateForFinalTenYearPeriod <- apply(dateAndVolumeDataOrderedByDateForFinalTenYearPeriod, 2, function(x) ifelse(x < 1000, "NA", x))
+
+columnNamesWithNinetyFivePercentOfVolumeDataNotLiquid <- colnames(dateAndVolumeDataOrderedByDateForFinalTenYearPeriod)[as.data.frame(colSums(is.na(dateAndVolumeDataOrderedByDateForFinalTenYearPeriod))/financialDaysInTenYears) <= 0.05]
+
+columnNamesForStocksThatAreVettedToUseInAnalysis <- intersect(as.vector(columnNamesWithNinetyFivePercentOfAdjustedClosePriceDataAvailable), as.vector(columnNamesWithNinetyFivePercentOfAdjustedClosePriceDataAvailable))
+
+finalTenYearsStockHistoryForRelevantStocksConsecutiveNAValues <- subset(dateAndAdjustedClosePriceDataOrderedByDateForFinalTenYearPeriod, select=columnNamesForStocksThatAreVettedToUseInAnalysis)
+
+write.csv(finalTenYearsStockHistoryForRelevantStocksConsecutiveNAValues,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FinalTenYearsStockHistoryForRelevantStocksConsecutiveNAValues.csv", row.names = FALSE)
+```
+
+# Remove assets where there are too many consecutive NA values
+```{r eval=FALSE}
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+finalTenYearsStockHistoryData <- read.csv(file="FinalTenYearsStockHistoryForRelevantStocksConsecutiveNAValues.csv", header=TRUE, sep=",")
+
+columnIndexes <- seq(1,ncol(finalTenYearsStockHistoryData))
+
+columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen <- c()
+for (columnIndex in columnIndexes)
+{
+  stockDataForIteration <- finalTenYearsStockHistoryData[,columnIndex]
+  naBreakdown <- rle(is.na(stockDataForIteration))
+  if(naBreakdown$lengths >= 10 & naBreakdown$values == TRUE) {
+      columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen[columnIndex] <- -columnIndex
+    }
+}
+columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen <- columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen[!is.na(columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen)]
+
+finalTenYearsStockHistoryData <- finalTenYearsStockHistoryData[columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen]
+
+write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FinalTenYearsStockHistoryForRelevantStocksNoNAValues.csv", row.names = FALSE)
+```
+
+# Fill in the missing NA values with reasonable estimates. For the columns where NA is the first value, we need to manually delete those. Approximately 3 columns with 10 NA values in total between the 3 columns.
+```{r eval=FALSE}
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+finalTenYearsStockHistoryData <- read.csv(file="FinalTenYearsStockHistoryForRelevantStocksNoNAValues.csv", header=TRUE, sep=",")
+
+columnNames <- colnames(finalTenYearsStockHistoryData)
+
+for (columnName in columnNames)
+{
+  finalTenYearsStockHistoryData <- finalTenYearsStockHistoryData %>% fill(columnName) #default direction down
+}
+
+write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv", row.names = FALSE)
+```
+
+# Compute the daily log returns using adjusted close prices. 
+```{r eval=FALSE}
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3909)))
+
+dailyLogReturns <- data.frame(
+   cbind.data.frame(
+     finalTenYearsStockHistoryData$date[-1],
+     diff(as.matrix(log(finalTenYearsStockHistoryData[,-1])))
+     )
+   )
+names(dailyLogReturns)[1]<-"date"
+
+write.csv(dailyLogReturns,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FullLogStockAssetDataPossibleNAValues.csv", row.names = FALSE)
+```
+
+# Need to remove columns that have too many NA values in them at this point, in the log data file. Just remove all columns with NA's in them at this point, after taking the logs.
+```{r eval=FALSE}
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+finalTenYearsStockHistoryData <- read.csv(file="FullLogStockAssetDataPossibleNAValues.csv", header=TRUE, sep=",")
+
+finalTenYearsStockHistoryData <- finalTenYearsStockHistoryData[ , colSums(is.na(finalTenYearsStockHistoryData)) == 0]
+
+write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FullLogStockAssetDataFilteredForNA.csv", row.names = FALSE)
+```
+
+# Detect and replace the outliers with estimates that are more consistent with the majority of the data
+```{r eval=FALSE}
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+fullLogAssetData <- read.csv(file="FullLogStockAssetDataFilteredForNA.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))
+
+winsor1 <- function (x, fraction=.05)
+{
+   if(length(fraction) != 1 || fraction < 0 ||
+         fraction > 0.5) {
+      stop("bad value for 'fraction'")
+   }
+   lim <- quantile(x, probs=c(fraction, 1-fraction))
+   x[ x < lim[1] ] <- lim[1]
+   x[ x > lim[2] ] <- lim[2]
+   x
+}
+
+columnIndexes <- seq(2,ncol(fullLogAssetData))
+
+for (columnIndex in columnIndexes) {
+  fullLogAssetData[,columnIndex] <- winsor1(fullLogAssetData[,columnIndex])
+}
+
+write.csv(fullLogAssetData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\FullLogStockAssetDataFittedForOutliers.csv", row.names = FALSE)
+```
+
+# Portfolio Optimization
+```{r eval=TRUE}
+
+options(scipen = 999)
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+fittedFullLogAssetData <- read.csv(file="FullLogStockAssetDataFittedForOutliers.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))
+dim(fittedFullLogAssetData)
+fittedFullLogAssetData <- fittedFullLogAssetData[-1,]
+dim(fittedFullLogAssetData)
+
+
+numberOfRows <- nrow(fittedFullLogAssetData)
+numberOfColumns <- ncol(fittedFullLogAssetData)
+
+
+h <- 5
+m <- 252
+
+breakingCondition <- numberOfRows + h
+
+index <- 0
+
+listOftotalReturnsForEachForecastedPeriod <- list()
+while (TRUE)
+{
+  stockIndexes <- seq(2,numberOfColumns)
+
+  startRow <- (h*index) + 1
+  endRow <- (h*index) + m
+
+  assetsDataForCurrentTimePeriod <- fittedFullLogAssetData[startRow:endRow,]
+  sharpeRatiosWithStockIndex <- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
+
+  for (stockIndex in stockIndexes)
+  {
+    currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,c(1,stockIndex)]
+    currentAssetDataForStockIndexTimeSeries <- ts(currentAssetDataForStockIndex)
+    columnName <- colnames(currentAssetDataForStockIndex)[2]
+
+    sharpeRatio <- round(SharpeRatio(currentAssetDataForStockIndexTimeSeries, Rf = .0003, FUN="StdDev"), 4)
+
+    sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] <- c(columnName, sharpeRatio[1,2])
+  }
+
+  stockNamesWithHighestSharpeRatios <- sharpeRatiosWithStockIndex %>% arrange(desc(SharpeRatio))
+  stockNamesWithHighestSharpeRatios <- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
+
+  stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
+
+  correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate() %>% stretch() %>% arrange(abs(r))
+
+  namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %>% unique()
+  namesOfLowlyCorrelatedStocks <- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
+
+  stocksToUseForModeling <- assetsDataForCurrentTimePeriod[, as.vector(namesOfLowlyCorrelatedStocks[,1])]
+  stocksToUseForModelingWithDateAppended <- data.frame(assetsDataForCurrentTimePeriod[,1], stocksToUseForModeling)
+  stocksToUseForModelingXTS <- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
+
+  stockIndexes <- seq(1:ncol(stocksToUseForModeling))
+
+  forecastedLogReturnsForStocksList = list()
+  for(stockIndex in stockIndexes)
+  {
+    currentStock <- stocksToUseForModeling[stockIndex]
+    columnName <- colnames(currentStock)
+
+    currentStockWithDateAppendedXTS <-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
+
+    modelARIMA <- auto.arima(currentStockWithDateAppendedXTS)
+    forecastARIMA <- forecast(modelARIMA, h=h)
+
+    forcastedLogReturnsForCurrentStock <- as.data.frame(forecastARIMA$mean)
+    colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="x"] <- columnName
+
+    forecastedLogReturnsForStocksList[[stockIndex]] <- forcastedLogReturnsForCurrentStock
+  }
+
+  forecastedLogReturnsForStocks <- dplyr::bind_cols(forecastedLogReturnsForStocksList)
+  forecastedLogReturnsForStocks <- as.matrix.data.frame(forecastedLogReturnsForStocks)
+
+  tickers <- colnames(stocksToUseForModeling)
+
+  meanReturns <- colMeans(stocksToUseForModeling)
+  covMat <- cov(stocksToUseForModeling)
+
+  portf <- portfolio.spec(tickers)
+  portf <- add.constraint(portf, type="full_investment")
+  portf <- add.constraint(portf, type ="box", min=.01, max=.05)
+  portf <- add.objective(portf, type="return", name="mean")
+  portf <- add.objective(portf, type="risk", name="StdDev")
+
+  # optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = "ROI", trace=TRUE)
+  optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method='random',maxSR=TRUE, message=TRUE)
+
+  weightsForPortfolio <- as.data.frame(extractWeights(optPort))
+
+  print(weightsForPortfolio)
+
+  totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
+
+  totalReturnForTheForecastingWindow <- unname(colSums(totalReturnsForTheForecastingWindowByDay))
+  listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnForTheForecastingWindow
+
+  if (endRow > breakingCondition)
+  # if (endRow > 272)
+  {
+    break
+  }
+  index <- index + 1
+}
+
+totalReturnsForEachForecastedPeriod <- dplyr::bind_cols(listOftotalReturnsForEachForecastedPeriod)
+totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecastedPeriod)
+
+write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturns.csv", row.names = FALSE)
+```
+
+```{r}
+
+## Merge all the indivdual files together to create the date and adjust. 
 
 # multmerge <- function(mypath) {
 #   filenames<-list.files(path=mypath, full.names=TRUE)
