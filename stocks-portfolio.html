@@ -545,11 +545,13 @@ weightsForPortfolio &lt;- as.data.frame(extractWeights(optPort))
 
 totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
 
-totalReturnForTheForecastingWindow &lt;- colSums(totalReturnsForTheForecastingWindowByDay)
+totalReturnForTheForecastingWindow &lt;- unname(colSums(totalReturnsForTheForecastingWindowByDay))
 totalReturnForTheForecastingWindow</code></pre>
-<pre><code>## extractWeights(optPort) 
-##             0.009512155</code></pre>
-<pre class="r"><code># while (index &lt; breakingCondition)
+<pre><code>## [1] 0.009512155</code></pre>
+<pre class="r"><code># value &lt;- as.double(totalReturnForTheForecastingWindow[1,1])
+# value
+
+# while (TRUE)
 # {
 #   startRow &lt;- (h*index) + 1
 #   endRow &lt;- (h*index) + m

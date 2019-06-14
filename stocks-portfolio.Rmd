@@ -290,8 +290,11 @@ weightsForPortfolio <- as.data.frame(extractWeights(optPort))
 
 totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
 
-totalReturnForTheForecastingWindow <- colSums(totalReturnsForTheForecastingWindowByDay)
+totalReturnForTheForecastingWindow <- unname(colSums(totalReturnsForTheForecastingWindowByDay))
 totalReturnForTheForecastingWindow
+
+# value <- as.double(totalReturnForTheForecastingWindow[1,1])
+# value
 
 # while (TRUE)
 # {
