@@ -200,124 +200,118 @@ library(reshape2)
 # 
 # write.csv(fullLogAssetData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FittedFullLogStockAssetData.csv", row.names = FALSE)
 
-## Now we look into portfolio optimization.
-
-options(scipen = 999)
-setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-fittedFullLogAssetData <- read.csv(file="FittedFullLogStockAssetData.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))
-dim(fittedFullLogAssetData)
-fittedFullLogAssetData <- fittedFullLogAssetData[-1,]
-dim(fittedFullLogAssetData)
-
-
-numberOfRows <- nrow(fittedFullLogAssetData)
-numberOfColumns <- ncol(fittedFullLogAssetData)
-
-stockIndexes <- seq(2,numberOfColumns)
-
-h <- 5
-m <- 252
-
-breakingCondition <- numberOfRows + h
-
-index <- 0
-
-startRow <- (h*index) + 1
-endRow <- (h*index) + m
-
-assetsDataForCurrentTimePeriod <- fittedFullLogAssetData[startRow:endRow,]
-sharpeRatiosWithStockIndex <- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
-
-for (stockIndex in stockIndexes)
-{
-  currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,c(1,stockIndex)]
-  currentAssetDataForStockIndexTimeSeries <- ts(currentAssetDataForStockIndex)
-  columnName <- colnames(currentAssetDataForStockIndex)[2]
-    
-  sharpeRatio <- round(SharpeRatio(currentAssetDataForStockIndexTimeSeries, Rf = .0003, FUN="StdDev"), 4)
-  
-  sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] <- c(columnName, sharpeRatio[1,2])
-}
-
-stockNamesWithHighestSharpeRatios <- sharpeRatiosWithStockIndex %>% arrange(desc(SharpeRatio)) %>% slice(1:50)
-
-stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
-
-correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate() %>% stretch() %>% arrange(abs(r))
-
-namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[1] %>% distinct() %>% slice(1:30)
-
-stocksToUseForModeling <- data.frame(subset(assetsDataForCurrentTimePeriod, select=namesOfLowlyCorrelatedStocks[,1]))
-stocksToUseForModelingWithDateAppended <- data.frame(assetsDataForCurrentTimePeriod[1], stocksToUseForModeling)
-stocksToUseForModelingXTS <- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
-
-stockIndexes <- seq(1:ncol(stocksToUseForModeling))
-
-forecastedLogReturnsForStocksList = list()
-for(stockIndex in stockIndexes)
-{
-  currentStock <- stocksToUseForModeling[stockIndex]
-  columnName <- colnames(currentStock)
-  
-  currentStockWithDateAppendedXTS <-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
-  
-  modelARIMA <- auto.arima(currentStockWithDateAppendedXTS)
-  forecastARIMA <- forecast(modelARIMA, h=5)
-  
-  forcastedLogReturnsForCurrentStock <- as.data.frame(forecastARIMA$mean)
-  colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="x"] <- columnName
-  
-  forecastedLogReturnsForStocksList[[stockIndex]] <- forcastedLogReturnsForCurrentStock
-}
-
-forecastedLogReturnsForStocks <- dplyr::bind_cols(forecastedLogReturnsForStocksList)
-forecastedLogReturnsForStocks <- as.matrix.data.frame(forecastedLogReturnsForStocks)
-
-tickers <- colnames(stocksToUseForModeling)
-
-meanReturns <- colMeans(stocksToUseForModeling)
-covMat <- cov(stocksToUseForModeling)
-
-portf <- portfolio.spec(tickers)
-portf <- add.constraint(portf, type="full_investment")
-portf <- add.constraint(portf, type ="box", min=.01, max=.05)
-portf <- add.objective(portf, type="return", name="mean")
-portf <- add.objective(portf, type="risk", name="StdDev")
-
-optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = "ROI", trace=TRUE)
-
-weightsForPortfolio <- as.data.frame(extractWeights(optPort))
-
-totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
-
-totalReturnForTheForecastingWindow <- unname(colSums(totalReturnsForTheForecastingWindowByDay))
-totalReturnForTheForecastingWindow
-
-# value <- as.double(totalReturnForTheForecastingWindow[1,1])
-# value
-
+# ## Now we look into portfolio optimization.
+# 
+# options(scipen = 999)
+# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
+# fittedFullLogAssetData <- read.csv(file="FittedFullLogStockAssetData.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))
+# dim(fittedFullLogAssetData)
+# fittedFullLogAssetData <- fittedFullLogAssetData[-1,]
+# dim(fittedFullLogAssetData)
+# 
+# 
+# numberOfRows <- nrow(fittedFullLogAssetData)
+# numberOfColumns <- ncol(fittedFullLogAssetData)
+# 
+# 
+# h <- 5
+# m <- 252
+# 
+# breakingCondition <- numberOfRows + h
+# 
+# index <- 0
+# 
+# listOftotalReturnsForEachForecastedPeriod <- list()
 # while (TRUE)
 # {
+#   stockIndexes <- seq(2,numberOfColumns)
+#   
 #   startRow <- (h*index) + 1
 #   endRow <- (h*index) + m
 #   
 #   assetsDataForCurrentTimePeriod <- fittedFullLogAssetData[startRow:endRow,]
+#   sharpeRatiosWithStockIndex <- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
 #   
 #   for (stockIndex in stockIndexes)
 #   {
-#     currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,stockIndex]
+#     currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,c(1,stockIndex)]
+#     currentAssetDataForStockIndexTimeSeries <- ts(currentAssetDataForStockIndex)
+#     columnName <- colnames(currentAssetDataForStockIndex)[2]
 #     
-#     fit <- lm(currentAssetDataForStockIndex ~ assetsDataForCurrentTimePeriod)
-#     result <- summary(fit)
-#     # summary gives us a lot of useful information, but we're mostly in beta value !!
-#     beta <- result$coefficients[2,1]
-#     print(beta)
+#     sharpeRatio <- round(SharpeRatio(currentAssetDataForStockIndexTimeSeries, Rf = .0003, FUN="StdDev"), 4)
+#     
+#     sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] <- c(columnName, sharpeRatio[1,2])
 #   }
 #   
-#   if (endRow > breakingCondition)
+#   stockNamesWithHighestSharpeRatios <- sharpeRatiosWithStockIndex %>% arrange(desc(SharpeRatio))
+#   stockNamesWithHighestSharpeRatios <- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
+# 
+#   stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
+# 
+#   correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate() %>% stretch() %>% arrange(abs(r))
+# 
+#   namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %>% unique()
+#   namesOfLowlyCorrelatedStocks <- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
+# 
+#   stocksToUseForModeling <- assetsDataForCurrentTimePeriod[, as.vector(namesOfLowlyCorrelatedStocks[,1])]
+#   stocksToUseForModelingWithDateAppended <- data.frame(assetsDataForCurrentTimePeriod[,1], stocksToUseForModeling)
+#   stocksToUseForModelingXTS <- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
+# 
+#   stockIndexes <- seq(1:ncol(stocksToUseForModeling))
+# 
+#   forecastedLogReturnsForStocksList = list()
+#   for(stockIndex in stockIndexes)
+#   {
+#     currentStock <- stocksToUseForModeling[stockIndex]
+#     columnName <- colnames(currentStock)
+# 
+#     currentStockWithDateAppendedXTS <-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
+# 
+#     modelARIMA <- auto.arima(currentStockWithDateAppendedXTS)
+#     forecastARIMA <- forecast(modelARIMA, h=h)
+# 
+#     forcastedLogReturnsForCurrentStock <- as.data.frame(forecastARIMA$mean)
+#     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="x"] <- columnName
+# 
+#     forecastedLogReturnsForStocksList[[stockIndex]] <- forcastedLogReturnsForCurrentStock
+#   }
+# 
+#   forecastedLogReturnsForStocks <- dplyr::bind_cols(forecastedLogReturnsForStocksList)
+#   forecastedLogReturnsForStocks <- as.matrix.data.frame(forecastedLogReturnsForStocks)
+# 
+#   tickers <- colnames(stocksToUseForModeling)
+# 
+#   meanReturns <- colMeans(stocksToUseForModeling)
+#   covMat <- cov(stocksToUseForModeling)
+# 
+#   portf <- portfolio.spec(tickers)
+#   portf <- add.constraint(portf, type="full_investment")
+#   portf <- add.constraint(portf, type ="box", min=.01, max=.05)
+#   portf <- add.objective(portf, type="return", name="mean")
+#   portf <- add.objective(portf, type="risk", name="StdDev")
+# 
+#   # optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = "ROI", trace=TRUE)
+#   optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method='random',maxSR=TRUE, message=TRUE)
+# 
+#   weightsForPortfolio <- as.data.frame(extractWeights(optPort))
+#   
+#   print(weightsForPortfolio)
+# 
+#   totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
+# 
+#   totalReturnForTheForecastingWindow <- unname(colSums(totalReturnsForTheForecastingWindowByDay))
+#   listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnForTheForecastingWindow
+# 
+#   # if (endRow > breakingCondition)
+#   if (endRow > 272)
 #   {
 #     break
 #   }
 #   index <- index + 1
 # }
+# 
+# totalReturnsForEachForecastedPeriod <- dplyr::bind_cols(listOftotalReturnsForEachForecastedPeriod)
+# totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecastedPeriod)
+# 
+# write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\MyPortfolioReturns.csv", row.names = FALSE)
 ```
