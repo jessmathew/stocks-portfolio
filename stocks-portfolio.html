@@ -479,7 +479,7 @@ startRow &lt;- (h*index) + 1
 endRow &lt;- (h*index) + m
 
 assetsDataForCurrentTimePeriod &lt;- fittedFullLogAssetData[startRow:endRow,]
-sharprRatiosWithStockIndex &lt;- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
+sharpeRatiosWithStockIndex &lt;- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
 
 for (stockIndex in stockIndexes)
 {
@@ -489,10 +489,10 @@ for (stockIndex in stockIndexes)
     
   sharpeRatio &lt;- round(SharpeRatio(currentAssetDataForStockIndexTimeSeries, Rf = .0003, FUN=&quot;StdDev&quot;), 4)
   
-  sharprRatiosWithStockIndex[nrow(sharprRatiosWithStockIndex)+1, ] &lt;- c(columnName, sharpeRatio[1,2])
+  sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] &lt;- c(columnName, sharpeRatio[1,2])
 }
 
-stockNamesWithHighestSharpeRatios &lt;- sharprRatiosWithStockIndex %&gt;% arrange(desc(SharpeRatio)) %&gt;% slice(1:50)
+stockNamesWithHighestSharpeRatios &lt;- sharpeRatiosWithStockIndex %&gt;% arrange(desc(SharpeRatio)) %&gt;% slice(1:50)
 
 stocksWithHighestSharpeRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
 
@@ -504,15 +504,12 @@ correlationBetweenTheStocks &lt;- stocksWithHighestSharpeRatios %&gt;% correlate
 
 stocksToUseForModeling &lt;- data.frame(subset(assetsDataForCurrentTimePeriod, select=namesOfLowlyCorrelatedStocks[,1]))
 stocksToUseForModelingWithDateAppended &lt;- data.frame(assetsDataForCurrentTimePeriod[1], stocksToUseForModeling)
-stocksToUseForModelingWithDateAppendedTS &lt;- ts(stocksToUseForModelingWithDateAppended)
 stocksToUseForModelingXTS &lt;- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
 
-sumPortfolioLogReturns &lt;- sum(stocksToUseForModeling)
-indexes &lt;- seq(1:ncol(stocksToUseForModeling))
+stockIndexes &lt;- seq(1:ncol(stocksToUseForModeling))
 
-portfolioWeights &lt;- data.frame(Stock=character(), Weight= as.double(double()), stringsAsFactors=FALSE)
-datalist = list()
-for(stockIndex in indexes)
+forecastedLogReturnsForStocksList = list()
+for(stockIndex in stockIndexes)
 {
   currentStock &lt;- stocksToUseForModeling[stockIndex]
   columnName &lt;- colnames(currentStock)
@@ -522,60 +519,36 @@ for(stockIndex in indexes)
   modelARIMA &lt;- auto.arima(currentStockWithDateAppendedXTS)
   forecastARIMA &lt;- forecast(modelARIMA, h=5)
   
-  meandf &lt;- as.data.frame(forecastARIMA$mean)
-  colnames(meandf)[colnames(meandf)==&quot;x&quot;] &lt;- columnName
-  # rowTest &lt;- mean[1,]
-  # transposeRow &lt;- t(rowTest)
+  forcastedLogReturnsForCurrentStock &lt;- as.data.frame(forecastARIMA$mean)
+  colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
   
-  datalist[[stockIndex]] &lt;- meandf
-  # print(rowTest)
-  # print(transposeRow)
+  forecastedLogReturnsForStocksList[[stockIndex]] &lt;- forcastedLogReturnsForCurrentStock
 }
 
-forecastedDf &lt;- dplyr::bind_cols(datalist)
-forecastedDf &lt;- as.matrix.data.frame(forecastedDf)
-
-# sumPortfolioLogReturns &lt;- sum(stocksToUseForModeling)
-# indexes &lt;- seq(1:ncol(stocksToUseForModeling))
-
-# portfolioWeights &lt;- data.frame(Stock=character(), Weight= as.double(double()), stringsAsFactors=FALSE)
-# for(stockIndex in indexes)
-# {
-#   currentStock &lt;- stocksToUseForModeling[stockIndex]
-#   sumStockLogReturns &lt;- sum(currentStock)
-#   columnName &lt;- colnames(currentStock)
-# 
-#   stockWeight &lt;- sumStockLogReturns/sumPortfolioLogReturns
-#   portfolioWeights[nrow(portfolioWeights)+1, ] &lt;- c(columnName, stockWeight)
-# }
+forecastedLogReturnsForStocks &lt;- dplyr::bind_cols(forecastedLogReturnsForStocksList)
+forecastedLogReturnsForStocks &lt;- as.matrix.data.frame(forecastedLogReturnsForStocks)
 
 tickers &lt;- colnames(stocksToUseForModeling)
-# weights &lt;- t(portfolioWeights[2])
 
 meanReturns &lt;- colMeans(stocksToUseForModeling)
 covMat &lt;- cov(stocksToUseForModeling)
 
 portf &lt;- portfolio.spec(tickers)
 portf &lt;- add.constraint(portf, type=&quot;full_investment&quot;)
-portf &lt;- add.constraint(portf, type =&quot;box&quot;, min=.01, max=.95)
+portf &lt;- add.constraint(portf, type =&quot;box&quot;, min=.01, max=.05)
 portf &lt;- add.objective(portf, type=&quot;return&quot;, name=&quot;mean&quot;)
 portf &lt;- add.objective(portf, type=&quot;risk&quot;, name=&quot;StdDev&quot;)
 
-optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = &quot;random&quot;, maxSR=TRUE, message=TRUE)</code></pre>
-<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## Warning: executing %dopar% sequentially: no parallel backend registered</code></pre>
-<pre><code>## elapsed time:1.08643801609675</code></pre>
-<pre class="r"><code>optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = &quot;ROI&quot;, trace=TRUE)
+optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = &quot;ROI&quot;, trace=TRUE)
 
 weightsForPortfolio &lt;- as.data.frame(extractWeights(optPort))
 
-multipledMatrix &lt;- as.matrix(forecastedDf) %*% as.matrix(weightsForPortfolio)
+totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
 
-necessarySumForThisRollingWindow &lt;- colSums(multipledMatrix)
-necessarySumForThisRollingWindow</code></pre>
+totalReturnForTheForecastingWindow &lt;- colSums(totalReturnsForTheForecastingWindowByDay)
+totalReturnForTheForecastingWindow</code></pre>
 <pre><code>## extractWeights(optPort) 
-##              0.01238467</code></pre>
+##             0.009512155</code></pre>
 <pre class="r"><code># while (index &lt; breakingCondition)
 # {
 #   startRow &lt;- (h*index) + 1
