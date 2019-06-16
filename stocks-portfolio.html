@@ -473,85 +473,120 @@ listOftotalReturnsForEachForecastedPeriod &lt;- list()
 while (TRUE)
 {
   stockIndexes &lt;- seq(2,numberOfColumns)
-
+  
   startRow &lt;- (h*index) + 1
   endRow &lt;- (h*index) + m
-
+  
   assetsDataForCurrentTimePeriod &lt;- fittedFullLogAssetData[startRow:endRow,]
   sharpeRatiosWithStockIndex &lt;- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
-
+  
   for (stockIndex in stockIndexes)
   {
     currentAssetDataForStockIndex &lt;- assetsDataForCurrentTimePeriod[,c(1,stockIndex)]
     currentAssetDataForStockIndexTimeSeries &lt;- ts(currentAssetDataForStockIndex)
     columnName &lt;- colnames(currentAssetDataForStockIndex)[2]
-
+    
     sharpeRatio &lt;- round(SharpeRatio(currentAssetDataForStockIndexTimeSeries, Rf = .0003, FUN=&quot;StdDev&quot;), 4)
-
+    
     sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] &lt;- c(columnName, sharpeRatio[1,2])
   }
-
+  
   stockNamesWithHighestSharpeRatios &lt;- sharpeRatiosWithStockIndex %&gt;% arrange(desc(SharpeRatio))
   stockNamesWithHighestSharpeRatios &lt;- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
-
+  
   stocksWithHighestSharpeRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
-
+  
   correlationBetweenTheStocks &lt;- stocksWithHighestSharpeRatios %&gt;% correlate() %&gt;% stretch() %&gt;% arrange(abs(r))
-
+  
   namesOfLowlyCorrelatedStocks &lt;- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %&gt;% unique()
   namesOfLowlyCorrelatedStocks &lt;- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
-
+  
   stocksToUseForModeling &lt;- assetsDataForCurrentTimePeriod[, as.vector(namesOfLowlyCorrelatedStocks[,1])]
   stocksToUseForModelingWithDateAppended &lt;- data.frame(assetsDataForCurrentTimePeriod[,1], stocksToUseForModeling)
   stocksToUseForModelingXTS &lt;- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
-
+  
   stockIndexes &lt;- seq(1:ncol(stocksToUseForModeling))
-
+  
   forecastedLogReturnsForStocksList = list()
   for(stockIndex in stockIndexes)
   {
     currentStock &lt;- stocksToUseForModeling[stockIndex]
     columnName &lt;- colnames(currentStock)
-
-    currentStockWithDateAppendedXTS &lt;-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
-
-    modelARIMA &lt;- auto.arima(currentStockWithDateAppendedXTS)
-    forecastARIMA &lt;- forecast(modelARIMA, h=h)
-
-    forcastedLogReturnsForCurrentStock &lt;- as.data.frame(forecastARIMA$mean)
+    
+    meanOfCurentStock &lt;- mean(unlist(currentStock))
+    sdOfCurrentStock &lt;- sd(unlist(currentStock))
+    # testsim&lt;-rep(NA,5)
+    
+    loopIndex &lt;- seq(1:h)
+    
+    price&lt;-rep(NA,h)
+    
+    #most recent price
+    # price[1]&lt;-as.numeric(unlist(currentStock[length(currentStock),]))
+    
+    #start simulating prices
+    
+    for(i in loopIndex){
+      
+      if (i == 1)
+      {
+        price[i]&lt;-as.numeric(unlist(currentStock[length(currentStock),]))*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock))
+        # price[i]&lt;-as.numeric(unlist(currentStock[length(currentStock),]))*rnorm(1,meanOfCurentStock,sdOfCurrentStock)
+      }
+      else
+      {
+        price[i]&lt;-price[i-1]*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock)) 
+      }
+    }
+    
+    print(columnName)
+    print(as.numeric(unlist(currentStock[length(currentStock),])))
+    print(as.data.frame(cbind(price)))
+    
+    forcastedLogReturnsForCurrentStock&lt;-as.data.frame(cbind(price))
     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
-
     forecastedLogReturnsForStocksList[[stockIndex]] &lt;- forcastedLogReturnsForCurrentStock
+    
+    
+    # currentStockWithDateAppendedXTS &lt;-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
+    # 
+    # modelARIMA &lt;- auto.arima(currentStockWithDateAppendedXTS)
+    # forecastARIMA &lt;- forecast(modelARIMA, h=h)
+    # 
+    # forcastedLogReturnsForCurrentStock &lt;- as.data.frame(forecastARIMA$mean)
+    # colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
+    # 
+    # forecastedLogReturnsForStocksList[[stockIndex]] &lt;- forcastedLogReturnsForCurrentStock
   }
-
+  
   forecastedLogReturnsForStocks &lt;- dplyr::bind_cols(forecastedLogReturnsForStocksList)
   forecastedLogReturnsForStocks &lt;- as.matrix.data.frame(forecastedLogReturnsForStocks)
-
+  
   tickers &lt;- colnames(stocksToUseForModeling)
-
+  
   meanReturns &lt;- colMeans(stocksToUseForModeling)
   covMat &lt;- cov(stocksToUseForModeling)
-
+  
   portf &lt;- portfolio.spec(tickers)
   portf &lt;- add.constraint(portf, type=&quot;full_investment&quot;)
   portf &lt;- add.constraint(portf, type =&quot;box&quot;, min=.01, max=.05)
   portf &lt;- add.objective(portf, type=&quot;return&quot;, name=&quot;mean&quot;)
   portf &lt;- add.objective(portf, type=&quot;risk&quot;, name=&quot;StdDev&quot;)
-
+  
   # optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = &quot;ROI&quot;, trace=TRUE)
   optPort &lt;- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method='random',maxSR=TRUE, message=TRUE)
-
+  
   weightsForPortfolio &lt;- as.data.frame(extractWeights(optPort))
-
+  
   print(weightsForPortfolio)
-
+  
   totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
-
+  
   totalReturnForTheForecastingWindow &lt;- unname(colSums(totalReturnsForTheForecastingWindowByDay))
   listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnForTheForecastingWindow
-
+  
   # if (endRow &gt; breakingCondition)
-  if (endRow &gt; 272)
+  if (endRow &gt; 257)
   {
     break
   }
@@ -560,231 +595,839 @@ while (TRUE)
 <pre><code>## 
 ## Correlation method: 'pearson'
 ## Missing treated using: 'pairwise.complete.obs'</code></pre>
+<pre><code>## [1] &quot;MPA&quot;
+## [1] 0.004565351
+##         price
+## 1 0.004584191
+## 2 0.004608440
+## 3 0.004634944
+## 4 0.004623374
+## 5 0.004610951
+## [1] &quot;BGT&quot;
+## [1] 0.01294822
+##        price
+## 1 0.01276113
+## 2 0.01283850
+## 3 0.01266548
+## 4 0.01260700
+## 5 0.01267649
+## [1] &quot;AEH&quot;
+## [1] 0.01218883
+##        price
+## 1 0.01227710
+## 2 0.01228925
+## 3 0.01237300
+## 4 0.01234169
+## 5 0.01249691
+## [1] &quot;BAF&quot;
+## [1] -0.003913945
+##          price
+## 1 -0.003934885
+## 2 -0.003941667
+## 3 -0.003937565
+## 4 -0.003931886
+## 5 -0.003951419
+## [1] &quot;AED&quot;
+## [1] 0.01140742
+##        price
+## 1 0.01138107
+## 2 0.01144234
+## 3 0.01161512
+## 4 0.01159704
+## 5 0.01160215
+## [1] &quot;MYD&quot;
+## [1] 0.0008355761
+##          price
+## 1 0.0008354129
+## 2 0.0008371977
+## 3 0.0008219807
+## 4 0.0008266575
+## 5 0.0008275543
+## [1] &quot;PFN&quot;
+## [1] 0.009445083
+##         price
+## 1 0.009402879
+## 2 0.009335367
+## 3 0.009432336
+## 4 0.009515067
+## 5 0.009531329
+## [1] &quot;MIY&quot;
+## [1] 0.004827465
+##         price
+## 1 0.004836264
+## 2 0.004836666
+## 3 0.004811332
+## 4 0.004817777
+## 5 0.004838393
+## [1] &quot;AEB&quot;
+## [1] 0.01639843
+##        price
+## 1 0.01628958
+## 2 0.01619739
+## 3 0.01623327
+## 4 0.01653680
+## 5 0.01688988
+## [1] &quot;DHF&quot;
+## [1] 0
+##   price
+## 1     0
+## 2     0
+## 3     0
+## 4     0
+## 5     0
+## [1] &quot;HYT&quot;
+## [1] 0.01141146
+##        price
+## 1 0.01138820
+## 2 0.01141104
+## 3 0.01144243
+## 4 0.01164813
+## 5 0.01153491
+## [1] &quot;PCM&quot;
+## [1] 0.01520068
+##        price
+## 1 0.01505829
+## 2 0.01518460
+## 3 0.01540186
+## 4 0.01535385
+## 5 0.01551372
+## [1] &quot;AKP&quot;
+## [1] 0.004815877
+##         price
+## 1 0.004823543
+## 2 0.004807883
+## 3 0.004816484
+## 4 0.004859246
+## 5 0.004867130
+## [1] &quot;FLC&quot;
+## [1] 0.002524192
+##         price
+## 1 0.002563535
+## 2 0.002518711
+## 3 0.002505526
+## 4 0.002499101
+## 5 0.002452692
+## [1] &quot;PGF&quot;
+## [1] 0.006350581
+##         price
+## 1 0.006363820
+## 2 0.006316344
+## 3 0.006317213
+## 4 0.006290070
+## 5 0.006299273
+## [1] &quot;PCN&quot;
+## [1] 0.005854676
+##         price
+## 1 0.005918847
+## 2 0.005929263
+## 3 0.005976591
+## 4 0.005998286
+## 5 0.005984258
+## [1] &quot;MYN&quot;
+## [1] 0.005120074
+##         price
+## 1 0.005118725
+## 2 0.005098991
+## 3 0.005118163
+## 4 0.005147675
+## 5 0.005136965
+## [1] &quot;VVR&quot;
+## [1] -0.002805356
+##          price
+## 1 -0.002769758
+## 2 -0.002780032
+## 3 -0.002784152
+## 4 -0.002788748
+## 5 -0.002831597
+## [1] &quot;VLT&quot;
+## [1] 0.004632722
+##         price
+## 1 0.004661262
+## 2 0.004623869
+## 3 0.004577372
+## 4 0.004559923
+## 5 0.004591086
+## [1] &quot;FAM&quot;
+## [1] 0.001399241
+##         price
+## 1 0.001389106
+## 2 0.001395162
+## 3 0.001403563
+## 4 0.001402511
+## 5 0.001411027
+## [1] &quot;TLI&quot;
+## [1] 0.001102228
+##         price
+## 1 0.001097734
+## 2 0.001097728
+## 3 0.001104432
+## 4 0.001111713
+## 5 0.001103858
+## [1] &quot;NSL&quot;
+## [1] -0.009736907
+##          price
+## 1 -0.009843776
+## 2 -0.010014072
+## 3 -0.010064736
+## 4 -0.009989163
+## 5 -0.010119823
+## [1] &quot;HNW&quot;
+## [1] 0.01221282
+##        price
+## 1 0.01197272
+## 2 0.01210476
+## 3 0.01210697
+## 4 0.01210468
+## 5 0.01203522
+## [1] &quot;PGX&quot;
+## [1] 0.005172276
+##         price
+## 1 0.005176669
+## 2 0.005194651
+## 3 0.005226678
+## 4 0.005228817
+## 5 0.005255876
+## [1] &quot;EVF&quot;
+## [1] 0.005934861
+##         price
+## 1 0.005883527
+## 2 0.005871769
+## 3 0.005899404
+## 4 0.005915314
+## 5 0.005858399
+## [1] &quot;FEO&quot;
+## [1] 0.01475393
+##        price
+## 1 0.01487383
+## 2 0.01493798
+## 3 0.01504469
+## 4 0.01502680
+## 5 0.01496773
+## [1] &quot;PFF&quot;
+## [1] 0.005915834
+##         price
+## 1 0.005935395
+## 2 0.005957488
+## 3 0.005936102
+## 4 0.005944988
+## 5 0.005927952
+## [1] &quot;AWF&quot;
+## [1] 0.01042566
+##        price
+## 1 0.01041868
+## 2 0.01039455
+## 3 0.01047863
+## 4 0.01055009
+## 5 0.01061180
+## [1] &quot;FRA&quot;
+## [1] 0.005702457
+##         price
+## 1 0.005721415
+## 2 0.005756914
+## 3 0.005747888
+## 4 0.005721740
+## 5 0.005713638
+## [1] &quot;HPI&quot;
+## [1] 0.003752194
+##         price
+## 1 0.003814329
+## 2 0.003796506
+## 3 0.003790613
+## 4 0.003852814
+## 5 0.003843490</code></pre>
 <pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
 ##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
 <pre><code>## Warning: executing %dopar% sequentially: no parallel backend registered</code></pre>
-<pre><code>## elapsed time:13.0588819980621</code></pre>
+<pre><code>## elapsed time:12.9795792102814</code></pre>
 <pre><code>##     extractWeights(optPort)
-## MPA                   0.046
-## BGT                   0.010
-## AEH                   0.044
-## BAF                   0.044
-## AED                   0.022
+## MPA                   0.050
+## BGT                   0.026
+## AEH                   0.022
+## BAF                   0.050
+## AED                   0.044
 ## MYD                   0.038
-## PFN                   0.016
-## MIY                   0.050
-## AEB                   0.024
-## DHF                   0.034
-## HYT                   0.016
-## PCM                   0.038
-## AKP                   0.044
-## FLC                   0.020
-## PGF                   0.030
-## PCN                   0.026
-## MYN                   0.050
-## VVR                   0.020
-## VLT                   0.024
-## FAM                   0.044
-## TLI                   0.044
-## NSL                   0.030
-## HNW                   0.050
-## PGX                   0.042
+## PFN                   0.010
+## MIY                   0.048
+## AEB                   0.010
+## DHF                   0.018
+## HYT                   0.030
+## PCM                   0.034
+## AKP                   0.038
+## FLC                   0.048
+## PGF                   0.046
+## PCN                   0.036
+## MYN                   0.042
+## VVR                   0.018
+## VLT                   0.044
+## FAM                   0.050
+## TLI                   0.036
+## NSL                   0.034
+## HNW                   0.028
+## PGX                   0.050
 ## EVF                   0.036
-## FEO                   0.026
-## PFF                   0.032
+## FEO                   0.034
+## PFF                   0.026
 ## AWF                   0.014
-## FRA                   0.040
-## HPI                   0.046</code></pre>
-<pre><code>## 
-## Correlation method: 'pearson'
-## Missing treated using: 'pairwise.complete.obs'
-## 
-## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## elapsed time:13.0578000545502</code></pre>
-<pre><code>##      extractWeights(optPort)
-## DDT                    0.050
-## IQI                    0.046
-## HGSH                   0.014
-## FEO                    0.014
-## HYB                    0.032
-## VRNT                   0.038
-## AED                    0.048
-## MPA                    0.038
-## EFT                    0.022
-## BTZ                    0.048
-## MYN                    0.050
-## ISF                    0.030
-## HPF                    0.038
-## MSB                    0.010
-## MIY                    0.048
-## PFN                    0.048
-## NSL                    0.048
-## JQC                    0.018
-## PGX                    0.042
-## AWF                    0.024
-## PCM                    0.022
-## AKP                    0.036
-## HPS                    0.010
-## JRO                    0.046
-## DHF                    0.036
-## EFR                    0.030
-## NAD                    0.050
-## ERC                    0.022
-## HYT                    0.012
-## FRA                    0.030</code></pre>
+## FRA                   0.022
+## HPI                   0.018</code></pre>
 <pre><code>## 
 ## Correlation method: 'pearson'
 ## Missing treated using: 'pairwise.complete.obs'</code></pre>
+<pre><code>## [1] &quot;DDT&quot;
+## [1] -0.008512432
+##          price
+## 1 -0.008608564
+## 2 -0.008522688
+## 3 -0.008501839
+## 4 -0.008592088
+## 5 -0.008603942
+## [1] &quot;IQI&quot;
+## [1] 0.009507247
+##         price
+## 1 0.009489384
+## 2 0.009551877
+## 3 0.009542736
+## 4 0.009670698
+## 5 0.009687995
+## [1] &quot;HGSH&quot;
+## [1] 0
+##   price
+## 1     0
+## 2     0
+## 3     0
+## 4     0
+## 5     0
+## [1] &quot;FEO&quot;
+## [1] -0.002512606
+##          price
+## 1 -0.002551474
+## 2 -0.002547092
+## 3 -0.002571495
+## 4 -0.002556608
+## 5 -0.002552992
+## [1] &quot;HYB&quot;
+## [1] 0
+##   price
+## 1     0
+## 2     0
+## 3     0
+## 4     0
+## 5     0
+## [1] &quot;VRNT&quot;
+## [1] -0.008264463
+##          price
+## 1 -0.008456629
+## 2 -0.008343813
+## 3 -0.008292379
+## 4 -0.008260534
+## 5 -0.008401315
+## [1] &quot;AED&quot;
+## [1] 0.01140742
+##        price
+## 1 0.01133850
+## 2 0.01144711
+## 3 0.01151982
+## 4 0.01149824
+## 5 0.01164516
+## [1] &quot;MPA&quot;
+## [1] 0.006069938
+##         price
+## 1 0.006103833
+## 2 0.006125237
+## 3 0.006173007
+## 4 0.006176726
+## 5 0.006176479
+## [1] &quot;EFT&quot;
+## [1] 0.01104965
+##        price
+## 1 0.01114219
+## 2 0.01114942
+## 3 0.01112971
+## 4 0.01120760
+## 5 0.01126693
+## [1] &quot;BTZ&quot;
+## [1] 0.003647119
+##         price
+## 1 0.003663993
+## 2 0.003667870
+## 3 0.003703679
+## 4 0.003710519
+## 5 0.003706406
+## [1] &quot;MYN&quot;
+## [1] 0.006785543
+##         price
+## 1 0.006792347
+## 2 0.006810452
+## 3 0.006833317
+## 4 0.006831880
+## 5 0.006851380
+## [1] &quot;ISF&quot;
+## [1] 0.01229309
+##        price
+## 1 0.01229273
+## 2 0.01249749
+## 3 0.01241901
+## 4 0.01254253
+## 5 0.01253750
+## [1] &quot;HPF&quot;
+## [1] -0.01130676
+##         price
+## 1 -0.01140589
+## 2 -0.01132002
+## 3 -0.01125012
+## 4 -0.01129460
+## 5 -0.01124551
+## [1] &quot;MSB&quot;
+## [1] 0.02150629
+##        price
+## 1 0.02146413
+## 2 0.02143162
+## 3 0.02112037
+## 4 0.02079725
+## 5 0.02046114
+## [1] &quot;MIY&quot;
+## [1] 0.0023745
+##         price
+## 1 0.002385663
+## 2 0.002390906
+## 3 0.002384730
+## 4 0.002400613
+## 5 0.002419133
+## [1] &quot;PFN&quot;
+## [1] -0.001163608
+##          price
+## 1 -0.001163885
+## 2 -0.001177468
+## 3 -0.001172507
+## 4 -0.001176493
+## 5 -0.001170749
+## [1] &quot;NSL&quot;
+## [1] 0.003824582
+##         price
+## 1 0.003859906
+## 2 0.003841022
+## 3 0.003834804
+## 4 0.003902390
+## 5 0.003902387
+## [1] &quot;JQC&quot;
+## [1] -0.00296722
+##          price
+## 1 -0.003012418
+## 2 -0.003057111
+## 3 -0.003023396
+## 4 -0.003021148
+## 5 -0.003033380
+## [1] &quot;PGX&quot;
+## [1] 0.005172276
+##         price
+## 1 0.005186523
+## 2 0.005205268
+## 3 0.005226504
+## 4 0.005227798
+## 5 0.005223329
+## [1] &quot;AWF&quot;
+## [1] 0.0008482917
+##          price
+## 1 0.0008503241
+## 2 0.0008579440
+## 3 0.0008548398
+## 4 0.0008675419
+## 5 0.0008660896
+## [1] &quot;PCM&quot;
+## [1] -0.005610724
+##          price
+## 1 -0.005598534
+## 2 -0.005578639
+## 3 -0.005688724
+## 4 -0.005681532
+## 5 -0.005714754
+## [1] &quot;AKP&quot;
+## [1] 0.0007998921
+##          price
+## 1 0.0008036647
+## 2 0.0008055521
+## 3 0.0008077472
+## 4 0.0008057192
+## 5 0.0008012255
+## [1] &quot;HPS&quot;
+## [1] -0.01119008
+##         price
+## 1 -0.01117615
+## 2 -0.01125506
+## 3 -0.01128734
+## 4 -0.01134866
+## 5 -0.01132030
+## [1] &quot;JRO&quot;
+## [1] 0.00357764
+##         price
+## 1 0.003556352
+## 2 0.003579747
+## 3 0.003628051
+## 4 0.003622631
+## 5 0.003644348
+## [1] &quot;DHF&quot;
+## [1] -0.00910501
+##          price
+## 1 -0.009144853
+## 2 -0.009253941
+## 3 -0.009228471
+## 4 -0.009277171
+## 5 -0.009209075
+## [1] &quot;EFR&quot;
+## [1] 0.01166691
+##        price
+## 1 0.01180898
+## 2 0.01192998
+## 3 0.01189714
+## 4 0.01206771
+## 5 0.01209624
+## [1] &quot;NAD&quot;
+## [1] 0.002339819
+##         price
+## 1 0.002339222
+## 2 0.002336181
+## 3 0.002328795
+## 4 0.002332274
+## 5 0.002332498
+## [1] &quot;ERC&quot;
+## [1] -0.0007437813
+##           price
+## 1 -0.0007545122
+## 2 -0.0007544503
+## 3 -0.0007494093
+## 4 -0.0007470360
+## 5 -0.0007520276
+## [1] &quot;HYT&quot;
+## [1] 0.001062555
+##         price
+## 1 0.001054709
+## 2 0.001070070
+## 3 0.001077691
+## 4 0.001070858
+## 5 0.001070268
+## [1] &quot;FRA&quot;
+## [1] -0.004069581
+##          price
+## 1 -0.004050458
+## 2 -0.004050571
+## 3 -0.004101729
+## 4 -0.004111034
+## 5 -0.004085429</code></pre>
 <pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
 ##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## elapsed time:13.2591819763184</code></pre>
+<pre><code>## elapsed time:13.115453004837</code></pre>
+<pre><code>##      extractWeights(optPort)
+## DDT                    0.048
+## IQI                    0.050
+## HGSH                   0.026
+## FEO                    0.018
+## HYB                    0.024
+## VRNT                   0.024
+## AED                    0.050
+## MPA                    0.034
+## EFT                    0.012
+## BTZ                    0.042
+## MYN                    0.050
+## ISF                    0.022
+## HPF                    0.010
+## MSB                    0.014
+## MIY                    0.040
+## PFN                    0.042
+## NSL                    0.028
+## JQC                    0.016
+## PGX                    0.050
+## AWF                    0.040
+## PCM                    0.036
+## AKP                    0.042
+## HPS                    0.022
+## JRO                    0.038
+## DHF                    0.038
+## EFR                    0.048
+## NAD                    0.026
+## ERC                    0.028
+## HYT                    0.042
+## FRA                    0.040</code></pre>
+<pre><code>## 
+## Correlation method: 'pearson'
+## Missing treated using: 'pairwise.complete.obs'</code></pre>
+<pre><code>## [1] &quot;DDT&quot;
+## [1] 0.01056971
+##        price
+## 1 0.01044818
+## 2 0.01051657
+## 3 0.01055280
+## 4 0.01069919
+## 5 0.01063896
+## [1] &quot;JHI&quot;
+## [1] 0.007631428
+##         price
+## 1 0.007499970
+## 2 0.007586855
+## 3 0.007450317
+## 4 0.007404354
+## 5 0.007443992
+## [1] &quot;HGSH&quot;
+## [1] 0
+##   price
+## 1     0
+## 2     0
+## 3     0
+## 4     0
+## 5     0
+## [1] &quot;JPC&quot;
+## [1] 0.00771043
+##         price
+## 1 0.007739653
+## 2 0.007792375
+## 3 0.007833833
+## 4 0.007789850
+## 5 0.007726604
+## [1] &quot;HYB&quot;
+## [1] 0.009638553
+##         price
+## 1 0.009597803
+## 2 0.009680745
+## 3 0.009694927
+## 4 0.009669661
+## 5 0.009647079
+## [1] &quot;HPF&quot;
+## [1] 0.009472555
+##         price
+## 1 0.009523069
+## 2 0.009452681
+## 3 0.009509505
+## 4 0.009620291
+## 5 0.009506394
+## [1] &quot;PPT&quot;
+## [1] 0.01084905
+##        price
+## 1 0.01080241
+## 2 0.01074584
+## 3 0.01072926
+## 4 0.01077491
+## 5 0.01077600
+## [1] &quot;EHI&quot;
+## [1] -0.00397937
+##          price
+## 1 -0.003986093
+## 2 -0.004007922
+## 3 -0.004039250
+## 4 -0.004049546
+## 5 -0.004077225
+## [1] &quot;AWF&quot;
+## [1] 0.00593511
+##         price
+## 1 0.005941845
+## 2 0.005914524
+## 3 0.005926114
+## 4 0.005901488
+## 5 0.005988257
+## [1] &quot;EFR&quot;
+## [1] 0.007453079
+##         price
+## 1 0.007529838
+## 2 0.007529929
+## 3 0.007539859
+## 4 0.007640850
+## 5 0.007661766
+## [1] &quot;BTZ&quot;
+## [1] 0.00364248
+##         price
+## 1 0.003624276
+## 2 0.003607063
+## 3 0.003567704
+## 4 0.003565526
+## 5 0.003570897
+## [1] &quot;VRNT&quot;
+## [1] 0.02492338
+##        price
+## 1 0.02476847
+## 2 0.02481793
+## 3 0.02467479
+## 4 0.02468319
+## 5 0.02502992
+## [1] &quot;NAD&quot;
+## [1] 0.008707757
+##         price
+## 1 0.008742837
+## 2 0.008745282
+## 3 0.008726079
+## 4 0.008775288
+## 5 0.008829600
+## [1] &quot;DHF&quot;
+## [1] 0.01226974
+##        price
+## 1 0.01231941
+## 2 0.01247462
+## 3 0.01245646
+## 4 0.01249426
+## 5 0.01244086
+## [1] &quot;PFN&quot;
+## [1] -0.005913469
+##          price
+## 1 -0.005921572
+## 2 -0.005853736
+## 3 -0.005841700
+## 4 -0.005850997
+## 5 -0.005876147
+## [1] &quot;EVF&quot;
+## [1] 0.009569518
+##         price
+## 1 0.009560861
+## 2 0.009467759
+## 3 0.009501618
+## 4 0.009550439
+## 5 0.009590650
+## [1] &quot;NSL&quot;
+## [1] 0.01262073
+##        price
+## 1 0.01267774
+## 2 0.01276707
+## 3 0.01277280
+## 4 0.01277401
+## 5 0.01280908
+## [1] &quot;PGF&quot;
+## [1] 0.00334804
+##         price
+## 1 0.003342289
+## 2 0.003354470
+## 3 0.003356808
+## 4 0.003365469
+## 5 0.003358273
+## [1] &quot;MYN&quot;
+## [1] 0.001668393
+##         price
+## 1 0.001670689
+## 2 0.001662739
+## 3 0.001677486
+## 4 0.001666362
+## 5 0.001661149
+## [1] &quot;HPI&quot;
+## [1] 0.01007547
+##         price
+## 1 0.010109886
+## 2 0.010021994
+## 3 0.009965424
+## 4 0.009934300
+## 5 0.010049394
+## [1] &quot;EVV&quot;
+## [1] 0.00360431
+##         price
+## 1 0.003611874
+## 2 0.003645659
+## 3 0.003610060
+## 4 0.003591024
+## 5 0.003583202
+## [1] &quot;JQC&quot;
+## [1] 0.005916969
+##         price
+## 1 0.005911580
+## 2 0.005940397
+## 3 0.005955769
+## 4 0.005983672
+## 5 0.005994946
+## [1] &quot;VVR&quot;
+## [1] 0.01330537
+##        price
+## 1 0.01325410
+## 2 0.01331912
+## 3 0.01350246
+## 4 0.01353337
+## 5 0.01343413
+## [1] &quot;ERC&quot;
+## [1] 0.007435493
+##         price
+## 1 0.007414288
+## 2 0.007489305
+## 3 0.007512557
+## 4 0.007493344
+## 5 0.007580542
+## [1] &quot;FEO&quot;
+## [1] 0.01456176
+##        price
+## 1 0.01457538
+## 2 0.01469521
+## 3 0.01467272
+## 4 0.01474381
+## 5 0.01480000
+## [1] &quot;MSD&quot;
+## [1] 0.0022048
+##         price
+## 1 0.002172964
+## 2 0.002160270
+## 3 0.002167978
+## 4 0.002192890
+## 5 0.002188412
+## [1] &quot;AEB&quot;
+## [1] -0.01188475
+##         price
+## 1 -0.01162493
+## 2 -0.01135376
+## 3 -0.01145841
+## 4 -0.01153002
+## 5 -0.01158533
+## [1] &quot;JRO&quot;
+## [1] 0.004711309
+##         price
+## 1 0.004689991
+## 2 0.004632300
+## 3 0.004621733
+## 4 0.004573652
+## 5 0.004509329
+## [1] &quot;FAM&quot;
+## [1] 0.002057227
+##         price
+## 1 0.002067928
+## 2 0.002066726
+## 3 0.002061432
+## 4 0.002060956
+## 5 0.002059785
+## [1] &quot;JFR&quot;
+## [1] 0.009345745
+##         price
+## 1 0.009435418
+## 2 0.009395507
+## 3 0.009570592
+## 4 0.009688451
+## 5 0.009705775</code></pre>
+<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
+##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
+<pre><code>## elapsed time:13.1527760028839</code></pre>
 <pre><code>##      extractWeights(optPort)
 ## DDT                    0.048
 ## JHI                    0.048
-## HGSH                   0.024
-## JPC                    0.034
-## HYB                    0.020
-## HPF                    0.028
-## PPT                    0.046
-## EHI                    0.028
-## AWF                    0.034
-## EFR                    0.042
-## BTZ                    0.050
-## VRNT                   0.048
-## NAD                    0.046
-## DHF                    0.036
-## PFN                    0.014
-## EVF                    0.024
-## NSL                    0.044
-## PGF                    0.010
-## MYN                    0.040
-## HPI                    0.014
-## EVV                    0.044
-## JQC                    0.010
-## VVR                    0.044
-## ERC                    0.044
-## FEO                    0.018
-## MSD                    0.048
-## AEB                    0.040
-## JRO                    0.020
-## FAM                    0.036
-## JFR                    0.018</code></pre>
-<pre><code>## 
-## Correlation method: 'pearson'
-## Missing treated using: 'pairwise.complete.obs'</code></pre>
-<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## elapsed time:13.1605439186096</code></pre>
-<pre><code>##      extractWeights(optPort)
-## AWF                    0.044
-## HGSH                   0.046
-## BTZ                    0.046
-## JPC                    0.016
-## HPF                    0.020
-## DDT                    0.050
-## VRNT                   0.022
-## PPT                    0.050
-## LTM                    0.016
-## JHI                    0.050
-## NSL                    0.044
-## EHI                    0.034
-## HYB                    0.020
-## DHF                    0.046
-## PGF                    0.018
+## HGSH                   0.030
+## JPC                    0.018
+## HYB                    0.026
+## HPF                    0.042
+## PPT                    0.030
+## EHI                    0.048
+## AWF                    0.038
 ## EFR                    0.020
-## EVF                    0.048
-## PFN                    0.040
-## PGX                    0.050
-## JQC                    0.030
-## EVV                    0.046
-## FAM                    0.022
-## FEO                    0.028
-## JFR                    0.018
-## JRO                    0.016
-## BGT                    0.036
-## HPI                    0.030
+## BTZ                    0.036
+## VRNT                   0.034
+## NAD                    0.046
+## DHF                    0.022
+## PFN                    0.042
+## EVF                    0.050
+## NSL                    0.022
+## PGF                    0.048
+## MYN                    0.044
+## HPI                    0.018
+## EVV                    0.030
+## JQC                    0.028
+## VVR                    0.010
 ## ERC                    0.022
-## MSD                    0.048
-## AEB                    0.024</code></pre>
-<pre><code>## 
-## Correlation method: 'pearson'
-## Missing treated using: 'pairwise.complete.obs'</code></pre>
-<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## elapsed time:13.1406810283661</code></pre>
-<pre><code>##      extractWeights(optPort)
-## HGSH                   0.020
-## PPT                    0.024
-## PFF                    0.014
-## HNW                    0.046
-## PDT                    0.046
-## NSL                    0.044
-## GORO                   0.010
-## HPF                    0.010
-## JHI                    0.018
-## EVF                    0.048
-## EVV                    0.042
-## MYN                    0.050
-## AFC                    0.042
-## DDT                    0.050
-## EHI                    0.018
-## HYB                    0.046
-## AEH                    0.038
-## BTZ                    0.050
-## AED                    0.048
-## MSD                    0.046
-## CQP                    0.012
-## PCM                    0.036
-## FAM                    0.050
-## PGF                    0.034
-## FEO                    0.022
-## EFR                    0.034
-## HPI                    0.022
-## ERC                    0.042
-## PFN                    0.010
-## JPC                    0.028</code></pre>
-<pre><code>## 
-## Correlation method: 'pearson'
-## Missing treated using: 'pairwise.complete.obs'</code></pre>
-<pre><code>## Leverage constraint min_sum and max_sum are restrictive, 
-##               consider relaxing. e.g. 'full_investment' constraint should be min_sum=0.99 and max_sum=1.01</code></pre>
-<pre><code>## elapsed time:13.1586730480194</code></pre>
-<pre><code>##      extractWeights(optPort)
-## HGSH                   0.028
-## PPT                    0.044
-## NHS                    0.040
-## AFC                    0.038
-## LTM                    0.016
-## MO                     0.042
-## HYB                    0.038
-## NSL                    0.042
-## GORO                   0.010
-## AEH                    0.018
-## EVF                    0.046
-## VRNT                   0.050
-## DDT                    0.038
-## ERC                    0.040
-## MSD                    0.036
-## BCH                    0.016
-## HPF                    0.020
-## ITCB                   0.030
-## JRO                    0.012
-## FAM                    0.028
-## HNW                    0.014
-## BGT                    0.022
-## FEO                    0.024
-## AED                    0.050
-## EFR                    0.028
-## EHI                    0.050
-## PCM                    0.050
+## FEO                    0.014
+## MSD                    0.042
 ## AEB                    0.048
-## FRA                    0.034
-## EFT                    0.048</code></pre>
+## JRO                    0.024
+## FAM                    0.044
+## JFR                    0.028</code></pre>
 <pre class="r"><code>totalReturnsForEachForecastedPeriod &lt;- dplyr::bind_cols(listOftotalReturnsForEachForecastedPeriod)
 totalReturnsForEachForecastedPeriod &lt;- as.data.frame(totalReturnsForEachForecastedPeriod)
 
-write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturns.csv&quot;, row.names = FALSE)</code></pre>
+# write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturns.csv&quot;, row.names = FALSE)</code></pre>
 <pre class="r"><code>## Merge all the indivdual files together to create the date and adjust. 
 
 # multmerge &lt;- function(mypath) {

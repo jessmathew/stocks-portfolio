@@ -203,120 +203,237 @@ write.csv(fullLogAssetData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia Univ
 ```
 
 # Portfolio Optimization
-```{r eval=TRUE}
+```{r eval=FALSE}
 
 options(scipen = 999)
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
-fittedFullLogAssetData <- read.csv(file="FullLogStockAssetDataFittedForOutliers.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))
-dim(fittedFullLogAssetData)
-fittedFullLogAssetData <- fittedFullLogAssetData[-1,]
-dim(fittedFullLogAssetData)
-
+fittedFullLogAssetData <- read.csv(file="FullLogStockAssetDataFittedForOutliers.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))[-1,]
 
 numberOfRows <- nrow(fittedFullLogAssetData)
 numberOfColumns <- ncol(fittedFullLogAssetData)
 
-
 h <- 5
 m <- 252
 
-breakingCondition <- numberOfRows + h
+# breakingCondition <- numberOfRows + h
 
 index <- 0
 
+stockIndexesForFirstLoop <- seq(2,numberOfColumns)
 listOftotalReturnsForEachForecastedPeriod <- list()
 while (TRUE)
 {
-  stockIndexes <- seq(2,numberOfColumns)
-
+  print("While loop index")
+  print(index)
+  print(Sys.time())
   startRow <- (h*index) + 1
   endRow <- (h*index) + m
 
   assetsDataForCurrentTimePeriod <- fittedFullLogAssetData[startRow:endRow,]
-  sharpeRatiosWithStockIndex <- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
-
-  for (stockIndex in stockIndexes)
+  sharpeRatiosWithStockIndex <- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
+  
+  for (stockIndexForFirstLoop in stockIndexesForFirstLoop)
   {
-    currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,c(1,stockIndex)]
-    currentAssetDataForStockIndexTimeSeries <- ts(currentAssetDataForStockIndex)
+    currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,c(1,stockIndexForFirstLoop)]
     columnName <- colnames(currentAssetDataForStockIndex)[2]
-
-    sharpeRatio <- round(SharpeRatio(currentAssetDataForStockIndexTimeSeries, Rf = .0003, FUN="StdDev"), 4)
-
-    sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] <- c(columnName, sharpeRatio[1,2])
+    sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] <- c(columnName, (mean(currentAssetDataForStockIndex[,2]))/(sd(currentAssetDataForStockIndex[,2])))
   }
-
+  
   stockNamesWithHighestSharpeRatios <- sharpeRatiosWithStockIndex %>% arrange(desc(SharpeRatio))
-  stockNamesWithHighestSharpeRatios <- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
+  stockNamesWithHighestSharpeRatios <- data.frame(head(stockNamesWithHighestSharpeRatios, 30))
 
   stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
 
-  correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate() %>% stretch() %>% arrange(abs(r))
+  correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate(use = "everything") %>% stretch() %>% arrange(abs(r))
 
   namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %>% unique()
   namesOfLowlyCorrelatedStocks <- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
-
+  
   stocksToUseForModeling <- assetsDataForCurrentTimePeriod[, as.vector(namesOfLowlyCorrelatedStocks[,1])]
   stocksToUseForModelingWithDateAppended <- data.frame(assetsDataForCurrentTimePeriod[,1], stocksToUseForModeling)
   stocksToUseForModelingXTS <- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
-
-  stockIndexes <- seq(1:ncol(stocksToUseForModeling))
-
+  
+  stockIndexesForSecondLoop <- seq(1:ncol(stocksToUseForModeling))
   forecastedLogReturnsForStocksList = list()
-  for(stockIndex in stockIndexes)
-  {
-    currentStock <- stocksToUseForModeling[stockIndex]
+  
+  for(stockIndexForSecondLoop in stockIndexesForSecondLoop) {
+    print("Second loop index")
+    print(stockIndexForSecondLoop)
+    currentStock <- stocksToUseForModeling[stockIndexForSecondLoop]
     columnName <- colnames(currentStock)
-
-    currentStockWithDateAppendedXTS <-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
-
-    modelARIMA <- auto.arima(currentStockWithDateAppendedXTS)
-    forecastARIMA <- forecast(modelARIMA, h=h)
-
-    forcastedLogReturnsForCurrentStock <- as.data.frame(forecastARIMA$mean)
+  
+    meanOfCurentStock <- mean(unlist(currentStock))
+    sdOfCurrentStock <- sd(unlist(currentStock))
+    
+    loopIndex <- seq(1:h)
+    price<-rep(NA,h)
+    
+    for(i in loopIndex){
+      
+      if (i == 1)
+      {
+        price[i]<-as.numeric(unlist(currentStock[length(currentStock),]))*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock))
+      }
+      else
+      {
+        price[i]<-price[i-1]*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock)) 
+      }
+    }
+    
+    forcastedLogReturnsForCurrentStock<-as.data.frame(cbind(price))
     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="x"] <- columnName
-
-    forecastedLogReturnsForStocksList[[stockIndex]] <- forcastedLogReturnsForCurrentStock
+    forecastedLogReturnsForStocksList[[stockIndexForSecondLoop]] <- forcastedLogReturnsForCurrentStock
   }
-
+  
   forecastedLogReturnsForStocks <- dplyr::bind_cols(forecastedLogReturnsForStocksList)
   forecastedLogReturnsForStocks <- as.matrix.data.frame(forecastedLogReturnsForStocks)
-
+  
   tickers <- colnames(stocksToUseForModeling)
-
+  
   meanReturns <- colMeans(stocksToUseForModeling)
   covMat <- cov(stocksToUseForModeling)
-
-  portf <- portfolio.spec(tickers)
-  portf <- add.constraint(portf, type="full_investment")
-  portf <- add.constraint(portf, type ="box", min=.01, max=.05)
-  portf <- add.objective(portf, type="return", name="mean")
-  portf <- add.objective(portf, type="risk", name="StdDev")
-
-  # optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = "ROI", trace=TRUE)
-  optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method='random',maxSR=TRUE, message=TRUE)
-
-  weightsForPortfolio <- as.data.frame(extractWeights(optPort))
-
-  print(weightsForPortfolio)
-
+  
+  columnSumsOfStocksToUseForModeling <- as.data.frame(colSums(stocksToUseForModeling))
+  weightsForPortfolio <- as.data.frame(sweep(columnSumsOfStocksToUseForModeling,2,colSums(columnSumsOfStocksToUseForModeling),`/`))
+  
+  # weightsForPortfolio <- data.frame(matrix(ncol = 1, nrow = 30))
+  # weightsForPortfolio[] <- 1/30
+  
   totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
 
   totalReturnForTheForecastingWindow <- unname(colSums(totalReturnsForTheForecastingWindowByDay))
   listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnForTheForecastingWindow
-
-  if (endRow > breakingCondition)
-  # if (endRow > 272)
+  
+  index <- index + 1
+  if (index == 455)
+    # if (endRow > 257)
   {
     break
   }
-  index <- index + 1
 }
 
 totalReturnsForEachForecastedPeriod <- dplyr::bind_cols(listOftotalReturnsForEachForecastedPeriod)
 totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecastedPeriod)
 
-write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturns.csv", row.names = FALSE)
+totalReturnsForEachForecastedPeriod
+
+write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturnsEqualWeights.csv", row.names = FALSE)
+```
+
+```{r eval=FALSE}
+options(scipen = 999)
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+fittedFullLogAssetData <- read.csv(file="FullLogStockAssetDataFittedForOutliers.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))[-1,]
+
+numberOfRows <- nrow(fittedFullLogAssetData)
+numberOfColumns <- ncol(fittedFullLogAssetData)
+
+h <- 5
+m <- 252
+
+# breakingCondition <- numberOfRows + h
+
+index <- 0
+
+stockIndexesForFirstLoop <- seq(2,numberOfColumns)
+listOftotalReturnsForEachForecastedPeriod <- list()
+while (TRUE)
+{
+  print("While loop index")
+  print(index)
+  print(Sys.time())
+  startRow <- (h*index) + 1
+  endRow <- (h*index) + m
+
+  assetsDataForCurrentTimePeriod <- fittedFullLogAssetData[startRow:endRow,]
+  sharpeRatiosWithStockIndex <- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
+  
+  for (stockIndexForFirstLoop in stockIndexesForFirstLoop)
+  {
+    currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,c(1,stockIndexForFirstLoop)]
+    columnName <- colnames(currentAssetDataForStockIndex)[2]
+    sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] <- c(columnName, (mean(currentAssetDataForStockIndex[,2]))/(sd(currentAssetDataForStockIndex[,2])))
+  }
+  
+  stockNamesWithHighestSharpeRatios <- sharpeRatiosWithStockIndex %>% arrange(desc(SharpeRatio))
+  stockNamesWithHighestSharpeRatios <- data.frame(head(stockNamesWithHighestSharpeRatios, 30))
+
+  stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
+
+  correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate(use = "everything") %>% stretch() %>% arrange(abs(r))
+
+  namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %>% unique()
+  namesOfLowlyCorrelatedStocks <- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
+  
+  stocksToUseForModeling <- assetsDataForCurrentTimePeriod[, as.vector(namesOfLowlyCorrelatedStocks[,1])]
+  stocksToUseForModelingWithDateAppended <- data.frame(assetsDataForCurrentTimePeriod[,1], stocksToUseForModeling)
+  stocksToUseForModelingXTS <- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
+  
+  stockIndexesForSecondLoop <- seq(1:ncol(stocksToUseForModeling))
+  forecastedLogReturnsForStocksList = list()
+  
+  for(stockIndexForSecondLoop in stockIndexesForSecondLoop) {
+    print("Second loop index")
+    print(stockIndexForSecondLoop)
+    currentStock <- stocksToUseForModeling[stockIndexForSecondLoop]
+    columnName <- colnames(currentStock)
+  
+    meanOfCurentStock <- mean(unlist(currentStock))
+    sdOfCurrentStock <- sd(unlist(currentStock))
+    
+    loopIndex <- seq(1:h)
+    price<-rep(NA,h)
+    
+    for(i in loopIndex){
+      
+      if (i == 1)
+      {
+        price[i]<-as.numeric(unlist(currentStock[length(currentStock),]))*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock))
+      }
+      else
+      {
+        price[i]<-price[i-1]*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock)) 
+      }
+    }
+    
+    forcastedLogReturnsForCurrentStock<-as.data.frame(cbind(price))
+    colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="x"] <- columnName
+    forecastedLogReturnsForStocksList[[stockIndexForSecondLoop]] <- forcastedLogReturnsForCurrentStock
+  }
+  
+  forecastedLogReturnsForStocks <- dplyr::bind_cols(forecastedLogReturnsForStocksList)
+  forecastedLogReturnsForStocks <- as.matrix.data.frame(forecastedLogReturnsForStocks)
+  
+  tickers <- colnames(stocksToUseForModeling)
+  
+  meanReturns <- colMeans(stocksToUseForModeling)
+  covMat <- cov(stocksToUseForModeling)
+  
+  columnSumsOfStocksToUseForModeling <- as.data.frame(colSums(stocksToUseForModeling))
+  # weightsForPortfolio <- as.data.frame(sweep(columnSumsOfStocksToUseForModeling,2,colSums(columnSumsOfStocksToUseForModeling),`/`))
+  
+  weightsForPortfolio <- data.frame(matrix(ncol = 1, nrow = 30))
+  weightsForPortfolio[] <- 1/30
+  
+  totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
+
+  totalReturnForTheForecastingWindow <- unname(colSums(totalReturnsForTheForecastingWindowByDay))
+  listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnForTheForecastingWindow
+  
+  index <- index + 1
+  if (index == 455)
+    # if (endRow > 257)
+  {
+    break
+  }
+}
+
+totalReturnsForEachForecastedPeriod <- dplyr::bind_cols(listOftotalReturnsForEachForecastedPeriod)
+totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecastedPeriod)
+
+totalReturnsForEachForecastedPeriod
+
+write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturnsEqualWeights.csv", row.names = FALSE)
 ```
 
 ```{r}
