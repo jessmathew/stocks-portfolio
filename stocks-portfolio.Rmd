@@ -240,7 +240,7 @@ while (TRUE)
   }
   
   stockNamesWithHighestSharpeRatios <- sharpeRatiosWithStockIndex %>% arrange(desc(SharpeRatio))
-  stockNamesWithHighestSharpeRatios <- data.frame(head(stockNamesWithHighestSharpeRatios, 30))
+  stockNamesWithHighestSharpeRatios <- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
 
   stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
 
@@ -317,9 +317,10 @@ totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecast
 
 totalReturnsForEachForecastedPeriod
 
-write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturnsEqualWeights.csv", row.names = FALSE)
+write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturns.csv", row.names = FALSE)
 ```
 
+# Portfolio Optimization with Equal Weights
 ```{r eval=FALSE}
 options(scipen = 999)
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
@@ -434,291 +435,257 @@ totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecast
 totalReturnsForEachForecastedPeriod
 
 write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturnsEqualWeights.csv", row.names = FALSE)
+``` 
+
+# Portfolio Optimization for S&P500
+```{r eval=FALSE}
+options(scipen = 999)
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+
+sp500StockData <- read.csv(file = "SP500new.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",5)))
+
+numberOfDays <- nrow(sp500StockData)
+financialDaysInYear <- 252
+financialDaysInTenYears <- financialDaysInYear*10
+
+lastDayInTheFinalTenYearPeriod <- numberOfDays
+firstDayInTheFinalTenYearPeriod <- lastDayInTheFinalTenYearPeriod - financialDaysInTenYears
+
+sp500StockDataForFinalTenYearPeriod <- dateAndAdjustedClosePriceDataOrderedByDate[firstDayInTheFinalTenYearPeriod:lastDayInTheFinalTenYearPeriod, c(1, 4)]
+
+fittedFullLogSP500StockData <- data.frame(
+  cbind.data.frame(
+    sp500StockDataForFinalTenYearPeriod$Date[-1],
+    diff(as.matrix(log(sp500StockDataForFinalTenYearPeriod[,-1])))
+  )
+)
+names(sp500StockDataForFinalTenYearPeriod)[1]<-"date"
+
+fittedFullLogAssetData = cbind(fittedFullLogSP500StockData, replicate(30,fittedFullLogSP500StockData$Close))
+
+# fittedFullLogAssetData <- read.csv(file="FullLogStockAssetDataFittedForOutliers.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))[-1,]
+numberOfRows <- nrow(fittedFullLogAssetData)
+numberOfColumns <- ncol(fittedFullLogAssetData)
+
+h <- 5
+m <- 252
+
+# breakingCondition <- numberOfRows + h
+
+index <- 0
+
+stockIndexesForFirstLoop <- seq(2,numberOfColumns)
+listOftotalReturnsForEachForecastedPeriod <- list()
+while (TRUE)
+{
+  print("While loop index")
+  print(index)
+  print(Sys.time())
+  startRow <- (h*index) + 1
+  endRow <- (h*index) + m
+
+  assetsDataForCurrentTimePeriod <- fittedFullLogAssetData[startRow:endRow,]
+  sharpeRatiosWithStockIndex <- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
+  
+  for (stockIndexForFirstLoop in stockIndexesForFirstLoop)
+  {
+    currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,c(1,stockIndexForFirstLoop)]
+    columnName <- colnames(currentAssetDataForStockIndex)[2]
+    sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] <- c(columnName, (mean(currentAssetDataForStockIndex[,2]))/(sd(currentAssetDataForStockIndex[,2])))
+  }
+  
+  stockNamesWithHighestSharpeRatios <- sharpeRatiosWithStockIndex %>% arrange(desc(SharpeRatio))
+  stockNamesWithHighestSharpeRatios <- data.frame(head(stockNamesWithHighestSharpeRatios, 30))
+
+  stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
+
+  correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate(use = "everything") %>% stretch() %>% arrange(abs(r))
+
+  namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %>% unique()
+  namesOfLowlyCorrelatedStocks <- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
+  
+  stocksToUseForModeling <- assetsDataForCurrentTimePeriod[, as.vector(namesOfLowlyCorrelatedStocks[,1])]
+  stocksToUseForModelingWithDateAppended <- data.frame(assetsDataForCurrentTimePeriod[,1], stocksToUseForModeling)
+  stocksToUseForModelingXTS <- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
+  
+  stockIndexesForSecondLoop <- seq(1:ncol(stocksToUseForModeling))
+  forecastedLogReturnsForStocksList = list()
+  
+  for(stockIndexForSecondLoop in stockIndexesForSecondLoop) {
+    print("Second loop index")
+    print(stockIndexForSecondLoop)
+    currentStock <- stocksToUseForModeling[stockIndexForSecondLoop]
+    columnName <- colnames(currentStock)
+  
+    meanOfCurentStock <- mean(unlist(currentStock))
+    sdOfCurrentStock <- sd(unlist(currentStock))
+    
+    loopIndex <- seq(1:h)
+    price<-rep(NA,h)
+    
+    for(i in loopIndex){
+      
+      if (i == 1)
+      {
+        price[i]<-as.numeric(unlist(currentStock[length(currentStock),]))*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock))
+      }
+      else
+      {
+        price[i]<-price[i-1]*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock)) 
+      }
+    }
+    
+    forcastedLogReturnsForCurrentStock<-as.data.frame(cbind(price))
+    colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="x"] <- columnName
+    forecastedLogReturnsForStocksList[[stockIndexForSecondLoop]] <- forcastedLogReturnsForCurrentStock
+  }
+  
+  forecastedLogReturnsForStocks <- dplyr::bind_cols(forecastedLogReturnsForStocksList)
+  forecastedLogReturnsForStocks <- as.matrix.data.frame(forecastedLogReturnsForStocks)
+  
+  tickers <- colnames(stocksToUseForModeling)
+  
+  meanReturns <- colMeans(stocksToUseForModeling)
+  covMat <- cov(stocksToUseForModeling)
+  
+  columnSumsOfStocksToUseForModeling <- as.data.frame(colSums(stocksToUseForModeling))
+  # weightsForPortfolio <- as.data.frame(sweep(columnSumsOfStocksToUseForModeling,2,colSums(columnSumsOfStocksToUseForModeling),`/`))
+  
+  weightsForPortfolio <- data.frame(matrix(ncol = 1, nrow = 30))
+  weightsForPortfolio[] <- 1/30
+  
+  totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
+
+  totalReturnForTheForecastingWindow <- unname(colSums(totalReturnsForTheForecastingWindowByDay))
+  listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnForTheForecastingWindow
+  
+  index <- index + 1
+  if (index == 455)
+    # if (endRow > 257)
+  {
+    break
+  }
+}
+
+totalReturnsForEachForecastedPeriod <- dplyr::bind_cols(listOftotalReturnsForEachForecastedPeriod)
+totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecastedPeriod)
+
+totalReturnsForEachForecastedPeriod
+
+write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturnsSP500.csv", row.names = FALSE)
+
 ```
 
-```{r}
+```{r eval=FALSE}
+options(scipen = 999)
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
 
-## Merge all the indivdual files together to create the date and adjust. 
+forecastedPortfolioReturns <- t(read.csv(file="ForecastedPortfolioReturns.csv", header=TRUE, sep=","))
+forecastedPortfolioReturns[, 1]  <- as.numeric(forecastedPortfolioReturns[, 1])
 
-# multmerge <- function(mypath) {
-#   filenames<-list.files(path=mypath, full.names=TRUE)
-#   datalist <- lapply(filenames, function(x){
-#     stockData <- read.csv(file=x,header=T)[,c("date", "adjclose")]
-#     colnames(stockData)[2] <- file_path_sans_ext(basename(x))
-#     return (stockData)
-#     })
-#   Reduce(function(x,y) {
-#     merge(x,y, by.x = "date", by.y = "date", all = TRUE)
-#     }, datalist)
-# }
-# 
-# mymergeddata <- multmerge("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\fh_20190420\\full_history")
-# head(mymergeddata)
-#
+forecastedPortfolioReturnsEqualWeights <- t(read.csv(file="ForecastedPortfolioReturnsEqualWeights.csv", header=TRUE, sep=","))
+forecastedPortfolioReturnsEqualWeights[, 1]  <- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
 
-# write.csv(mymergeddata,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FullStockHistory.csv", row.names = FALSE)
+forecastedPortfolioReturnsSP500 <- t(read.csv(file="ForecastedPortfolioReturnsSP500.csv", header=TRUE, sep=","))
+forecastedPortfolioReturnsSP500[, 1]  <- as.numeric(forecastedPortfolioReturnsSP500[, 1])
 
-## Read the full stock history data and order it, to make a new data set that I can run my analysis on.
-# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# fullStockHistoryData <- read.csv(file="FullStockHistory.csv", header=TRUE, sep=",")
-# orderedFullStockHistoryData <- fullStockHistoryData[order(fullStockHistoryData$date),]
-# head(orderedFullStockHistoryData)
+cumulativeForecastedPortfolioReturns <- cumsum(forecastedPortfolioReturns[, 1])
+cumulativeForecastedPortfolioReturnsEqualWeights <- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
+cumulativeForecastedPortfolioReturnsSP500 <- cumsum(forecastedPortfolioReturnsSP500[, 1])
 
-# write.csv(orderedFullStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\OrderedFullStockHistory.csv", row.names = FALSE)
+plot(cumulativeForecastedPortfolioReturns,type="l",col="red", lty=1, main = "Cumulative Returns Over Time", xlab = "Time", ylab = "Cumulative Returns")
+lines(cumulativeForecastedPortfolioReturnsEqualWeights,col="green", lty=1)
+lines(cumulativeForecastedPortfolioReturnsSP500,col="blue", lty=1)
 
-## This section containts a loop that basically finds the ten year period that has the most assets with 5% or less of the data being missing.
-# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# orderedFullStockHistoryData <- read.csv(file="OrderedSampleStockHistory.csv", header=TRUE, sep=",")
-# 
-# numberOfDays <- nrow(orderedFullStockHistoryData)
-# numberOfDays
-# 
-# days <- seq(1:numberOfDays)
-# financialDaysInYear <- 252
-# financialDaysInTenYears <- financialDaysInYear*10
-# 
-# dateRangeDataFrame <- data.frame(InitialDay = 0, FinalDay = 0, NAPercentagesLessThanFivePercentCount = 0)
-# 
-# for (initialDay in days) {
-#   finalDay <- initialDay + (financialDaysInTenYears - 1)
-#   
-#   stockAssetDataForCurrentTenYearPeriod <- orderedFullStockHistoryData[initialDay:finalDay, ]
-#   
-#   naPercentages <- sapply(stockAssetDataForCurrentTenYearPeriod, function(y) sum(length(which(is.na(y))))/financialDaysInTenYears)
-#   
-#   countOfNAPercentagesLessThanFivePercent <- sum(naPercentages <= 0.05)
-#   
-#   if (dateRangeDataFrame[3] < countOfNAPercentagesLessThanFivePercent) {
-#     dateRangeDataFrame[1] = initialDay
-#     dateRangeDataFrame[2] = finalDay
-#     dateRangeDataFrame[3] = countOfNAPercentagesLessThanFivePercent
-#   }
-# }
-# 
-# dateRangeDataFrame
+legend("topleft", legend=c("Forecasted Portfolio (Mixed Weights)", "Forecasted Portfolio (Equal Weights)", "S&P 500"),
+       col=c("red","green","blue"), lty=1, cex=1,bty="n")
+```
 
-## Check the final ten years of stock history to see how many assets have 5% or less of their data missing. We then write the file so that we can just read from it later, instead of recomputing to find the algorithm. 
-# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# orderedFullStockHistoryData <- read.csv(file="OrderedSampleStockHistory.csv", header=TRUE, sep=",")
-# 
-# numberOfDays <- nrow(orderedFullStockHistoryData)
-# financialDaysInYear <- 252
-# financialDaysInTenYears <- financialDaysInYear*10
-# 
-# lastDayInTheFinalTenYearPeriod <- numberOfDays
-# firstDayInTheFinalTenYearPeriod <- lastDayInTheFinalTenYearPeriod - financialDaysInTenYears
-# 
-# stockAssetDataForFinalTenYearPeriod <- orderedFullStockHistoryData[firstDayInTheFinalTenYearPeriod:lastDayInTheFinalTenYearPeriod, ]
-# 
-# columnNamesWithNinetyFivePercentOfDataAvailable <- colnames(stockAssetDataForFinalTenYearPeriod)[as.data.frame(colSums(is.na(stockAssetDataForFinalTenYearPeriod))/financialDaysInTenYears) <= 0.05]
-# 
-# finalTenYearsStockHistoryForRelevantStocks <- subset(stockAssetDataForFinalTenYearPeriod, select=columnNamesWithNinetyFivePercentOfDataAvailable)
-# 
-# write.csv(finalTenYearsStockHistoryForRelevantStocks,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\SampleFinalTenYearsStockHistoryForRelevantStocks.csv", row.names = FALSE)
+# Mean, Volatilty, Sharpe Ratio, Sortino Ratio, Maximum Drawdown, Turnover
+```{r eval=FALSE}
+options(scipen = 999)
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
 
-## Remove asset data where there are too many consecutive NA values.
+forecastedPortfolioReturns <- t(read.csv(file="ForecastedPortfolioReturns.csv", header=TRUE, sep=","))
+forecastedPortfolioReturns[, 1]  <- as.numeric(forecastedPortfolioReturns[, 1])
 
-# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# # finalTenYearsStockHistoryData <- read.csv(file="FinalTenYearsStockHistoryForRelevantStocks.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",4019)))
-# finalTenYearsStockHistoryData <- read.csv(file="FinalTenYearsStockHistoryForRelevantStocks.csv", header=TRUE, sep=",")
-# 
-# columnIndexes <- seq(1,ncol(finalTenYearsStockHistoryData))
-# 
-# columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen <- c()
-# for (columnIndex in columnIndexes)
-# {
-#   stockDataForIteration <- finalTenYearsStockHistoryData[,columnIndex]
-#   naBreakdown <- rle(is.na(stockDataForIteration))
-#   if(naBreakdown$lengths >= 10 & naBreakdown$values == TRUE) {
-#       columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen[columnIndex] <- -columnIndex
-#     }
-# }
-# columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen <- columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen[!is.na(columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen)]
-# 
-# finalTenYearsStockHistoryData <- finalTenYearsStockHistoryData[columnIndexesWhereConsecutiveNAsAreGreaterThanOrEqualToTen]
-# 
-# write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FilteredStockHistoryDataForTheFinalTenYears.csv", row.names = FALSE)
+forecastedPortfolioReturnsEqualWeights <- t(read.csv(file="ForecastedPortfolioReturnsEqualWeights.csv", header=TRUE, sep=","))
+forecastedPortfolioReturnsEqualWeights[, 1]  <- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
 
-## Fill in the missing NA values with reasonable estimates. For the columns where NA is the first value, we need to manually delete those. Approximately 3 columns with 10 NA values in total between the 3 columns.
+forecastedPortfolioReturnsSP500 <- t(read.csv(file="ForecastedPortfolioReturnsSP500.csv", header=TRUE, sep=","))
+forecastedPortfolioReturnsSP500[, 1]  <- as.numeric(forecastedPortfolioReturnsSP500[, 1])
 
-# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# # finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",", colClasses=c("date",rep("numeric",3909)))
-# # finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",")
-# finalTenYearsStockHistoryData <- read.csv(file="FilteredStockHistoryDataForTheFinalTenYears.csv", header=TRUE, sep=",")
-# 
-# columnNames <- colnames(finalTenYearsStockHistoryData)
-# 
-# for (columnName in columnNames)
-# {
-#   finalTenYearsStockHistoryData <- finalTenYearsStockHistoryData %>% fill(columnName) #default direction down
-# }
-# 
-# write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv", row.names = FALSE)
+forecastedPortfolioReturnsTS <- ts(forecastedPortfolioReturns)
+forecastedPortfolioReturnsEqualWeightsTS <- ts(forecastedPortfolioReturnsEqualWeights)
+forecastedPortfolioReturnsSP500TS <- ts(forecastedPortfolioReturnsSP500)
 
-## Compute the daily log returns using adjusted close prices. 
-# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# finalTenYearsStockHistoryData <- read.csv(file="TESTFilteredStockHistoryDataForTheFinalTenYearsWithNoGaps.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3909)))
-# 
-# head(finalTenYearsStockHistoryData)
-# 
-# dailyLogReturns <- data.frame(
-#    cbind.data.frame(
-#      finalTenYearsStockHistoryData$date[-1],
-#      diff(as.matrix(log(finalTenYearsStockHistoryData[,-1])))
-#      )
-#    )
-# names(dailyLogReturns)[1]<-"date"
-# 
-# head(dailyLogReturns)
-# 
-# write.csv(dailyLogReturns,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FullLogStockAssetData.csv", row.names = FALSE)
 
-## Need to remove columns that have too many NA values in them at this point, in the log data file. Just remove all columns with NA's in them at this point, after taking the logs.
+#Mean Returns
+meanForecastedPortfolioReturns <- mean(forecastedPortfolioReturns)
+meanForecastedPortfolioReturnsEqualWeights <- mean(forecastedPortfolioReturnsEqualWeights)
+meanForecastedPortfolioReturnsSP500 <- mean(forecastedPortfolioReturnsSP500)
 
-# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# finalTenYearsStockHistoryData <- read.csv(file="FullLogStockAssetData.csv", header=TRUE, sep=",")
-# 
-# finalTenYearsStockHistoryData <- finalTenYearsStockHistoryData[ , colSums(is.na(finalTenYearsStockHistoryData)) == 0]
-# 
-# write.csv(finalTenYearsStockHistoryData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FullLogStockAssetDataFilteredForNA.csv", row.names = FALSE)
+print(meanForecastedPortfolioReturns)
+print(meanForecastedPortfolioReturnsEqualWeights)
+print(meanForecastedPortfolioReturnsSP500)
 
-## Detect and replace the outliers with estimates that are more consistent with the majority of the data
+#Volatility
+sdForecastedPortfolioReturns <- sd(forecastedPortfolioReturns)
+sdForecastedPortfolioReturnsEqualWeights <- sd(forecastedPortfolioReturnsEqualWeights)
+sdForecastedPortfolioReturnsSP500 <- sd(forecastedPortfolioReturnsSP500)
 
-# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# fullLogAssetData <- read.csv(file="FullLogStockAssetDataFilteredForNA.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))
+print(sdForecastedPortfolioReturns)
+print(sdForecastedPortfolioReturnsEqualWeights)
+print(sdForecastedPortfolioReturnsSP500)
 
-# winsor1 <- function (x, fraction=.05)
-# {
-#    if(length(fraction) != 1 || fraction < 0 ||
-#          fraction > 0.5) {
-#       stop("bad value for 'fraction'")
-#    }
-#    lim <- quantile(x, probs=c(fraction, 1-fraction))
-#    x[ x < lim[1] ] <- lim[1]
-#    x[ x > lim[2] ] <- lim[2]
-#    x
-# }
-# 
-# columnIndexes <- seq(2,ncol(fullLogAssetData))
-# 
-# for (columnIndex in columnIndexes) {
-#   fullLogAssetData[,columnIndex] <- winsor1(fullLogAssetData[,columnIndex])
-# }
-# 
-# write.csv(fullLogAssetData,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\FittedFullLogStockAssetData.csv", row.names = FALSE)
+#Sharpe Ratios
+sharpeRatioForecastedPortfolioReturns <- SharpeRatio(forecastedPortfolioReturnsTS, Rf = 0, FUN="StdDev")
+sharpeRatioForecastedPortfolioReturnsEqualWeights <- SharpeRatio(forecastedPortfolioReturnsEqualWeightsTS, Rf = 0, FUN="StdDev")
+sharpeRatioForecastedPortfolioReturnsSP500 <- SharpeRatio(forecastedPortfolioReturnsSP500TS, Rf = 0, FUN="StdDev")
 
-# ## Now we look into portfolio optimization.
-# 
-# options(scipen = 999)
-# setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories")
-# fittedFullLogAssetData <- read.csv(file="FittedFullLogStockAssetData.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))
-# dim(fittedFullLogAssetData)
-# fittedFullLogAssetData <- fittedFullLogAssetData[-1,]
-# dim(fittedFullLogAssetData)
-# 
-# 
-# numberOfRows <- nrow(fittedFullLogAssetData)
-# numberOfColumns <- ncol(fittedFullLogAssetData)
-# 
-# 
-# h <- 5
-# m <- 252
-# 
-# breakingCondition <- numberOfRows + h
-# 
-# index <- 0
-# 
-# listOftotalReturnsForEachForecastedPeriod <- list()
-# while (TRUE)
-# {
-#   stockIndexes <- seq(2,numberOfColumns)
-#   
-#   startRow <- (h*index) + 1
-#   endRow <- (h*index) + m
-#   
-#   assetsDataForCurrentTimePeriod <- fittedFullLogAssetData[startRow:endRow,]
-#   sharpeRatiosWithStockIndex <- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)
-#   
-#   for (stockIndex in stockIndexes)
-#   {
-#     currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,c(1,stockIndex)]
-#     currentAssetDataForStockIndexTimeSeries <- ts(currentAssetDataForStockIndex)
-#     columnName <- colnames(currentAssetDataForStockIndex)[2]
-#     
-#     sharpeRatio <- round(SharpeRatio(currentAssetDataForStockIndexTimeSeries, Rf = .0003, FUN="StdDev"), 4)
-#     
-#     sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] <- c(columnName, sharpeRatio[1,2])
-#   }
-#   
-#   stockNamesWithHighestSharpeRatios <- sharpeRatiosWithStockIndex %>% arrange(desc(SharpeRatio))
-#   stockNamesWithHighestSharpeRatios <- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
-# 
-#   stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
-# 
-#   correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate() %>% stretch() %>% arrange(abs(r))
-# 
-#   namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %>% unique()
-#   namesOfLowlyCorrelatedStocks <- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
-# 
-#   stocksToUseForModeling <- assetsDataForCurrentTimePeriod[, as.vector(namesOfLowlyCorrelatedStocks[,1])]
-#   stocksToUseForModelingWithDateAppended <- data.frame(assetsDataForCurrentTimePeriod[,1], stocksToUseForModeling)
-#   stocksToUseForModelingXTS <- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
-# 
-#   stockIndexes <- seq(1:ncol(stocksToUseForModeling))
-# 
-#   forecastedLogReturnsForStocksList = list()
-#   for(stockIndex in stockIndexes)
-#   {
-#     currentStock <- stocksToUseForModeling[stockIndex]
-#     columnName <- colnames(currentStock)
-# 
-#     currentStockWithDateAppendedXTS <-xts(currentStock, order.by=stocksToUseForModelingWithDateAppended[,1])
-# 
-#     modelARIMA <- auto.arima(currentStockWithDateAppendedXTS)
-#     forecastARIMA <- forecast(modelARIMA, h=h)
-# 
-#     forcastedLogReturnsForCurrentStock <- as.data.frame(forecastARIMA$mean)
-#     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="x"] <- columnName
-# 
-#     forecastedLogReturnsForStocksList[[stockIndex]] <- forcastedLogReturnsForCurrentStock
-#   }
-# 
-#   forecastedLogReturnsForStocks <- dplyr::bind_cols(forecastedLogReturnsForStocksList)
-#   forecastedLogReturnsForStocks <- as.matrix.data.frame(forecastedLogReturnsForStocks)
-# 
-#   tickers <- colnames(stocksToUseForModeling)
-# 
-#   meanReturns <- colMeans(stocksToUseForModeling)
-#   covMat <- cov(stocksToUseForModeling)
-# 
-#   portf <- portfolio.spec(tickers)
-#   portf <- add.constraint(portf, type="full_investment")
-#   portf <- add.constraint(portf, type ="box", min=.01, max=.05)
-#   portf <- add.objective(portf, type="return", name="mean")
-#   portf <- add.objective(portf, type="risk", name="StdDev")
-# 
-#   # optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method = "ROI", trace=TRUE)
-#   optPort <- optimize.portfolio(stocksToUseForModelingXTS, portf, optimize_method='random',maxSR=TRUE, message=TRUE)
-# 
-#   weightsForPortfolio <- as.data.frame(extractWeights(optPort))
-#   
-#   print(weightsForPortfolio)
-# 
-#   totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
-# 
-#   totalReturnForTheForecastingWindow <- unname(colSums(totalReturnsForTheForecastingWindowByDay))
-#   listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnForTheForecastingWindow
-# 
-#   # if (endRow > breakingCondition)
-#   if (endRow > 272)
-#   {
-#     break
-#   }
-#   index <- index + 1
-# }
-# 
-# totalReturnsForEachForecastedPeriod <- dplyr::bind_cols(listOftotalReturnsForEachForecastedPeriod)
-# totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecastedPeriod)
-# 
-# write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\AMEX NYSE NASDAQ Stock Histories\\MyPortfolioReturns.csv", row.names = FALSE)
+print(sharpeRatioForecastedPortfolioReturns)
+print(sharpeRatioForecastedPortfolioReturnsEqualWeights)
+print(sharpeRatioForecastedPortfolioReturnsSP500)
+
+#Sortino Ratios
+sortinoRatioForecastedPortfolioReturns <- SortinoRatio(forecastedPortfolioReturnsTS, MAR = 0)
+sortinoRatioForecastedPortfolioReturnsEqualWeights <- SortinoRatio(forecastedPortfolioReturnsEqualWeightsTS, MAR = 0)
+sortinoRatioForecastedPortfolioReturnsSP500 <- SortinoRatio(forecastedPortfolioReturnsSP500TS, MAR = 0)
+
+print(sortinoRatioForecastedPortfolioReturns)
+print(sortinoRatioForecastedPortfolioReturnsEqualWeights)
+print(sortinoRatioForecastedPortfolioReturnsSP500)
+
+#Maximum Drawdown
+maximumDrawdownForecastedPortfolioReturns <- maxDrawdown(forecastedPortfolioReturnsTS)
+maximumDrawdownForecastedPortfolioReturnsEqualWeights <- maxDrawdown(forecastedPortfolioReturnsEqualWeightsTS)
+maximumDrawdownForecastedPortfolioReturnsSP500 <- maxDrawdown(forecastedPortfolioReturnsSP500TS)
+
+print(maximumDrawdownForecastedPortfolioReturns)
+print(maximumDrawdownForecastedPortfolioReturnsEqualWeights)
+print(maximumDrawdownForecastedPortfolioReturnsSP500)
+
+stocksUsedForEachForecastedPeriod <- read.csv(file="StocksUsedForEachForecastedPeriod.csv", header=TRUE, sep=",")
+
+rowIndexes <- seq(1:nrow(stocksUsedForEachForecastedPeriod)-1)
+
+listOfTurnoverRates <- list()
+for (rowIndex in rowIndexes)
+{
+  currentRowTransposed <- as.vector(t(stocksUsedForEachForecastedPeriod[rowIndex,]))
+  nextRowTransposed <- as.vector(t(stocksUsedForEachForecastedPeriod[rowIndex+1,]))
+  
+  uniqueStocksBetweenTheTwoRows <- as.data.frame(currentRowTransposed[!(currentRowTransposed %in% nextRowTransposed)])
+  
+  numberOfDifferentStocks <- nrow(uniqueStocksBetweenTheTwoRows)
+  turnoverRate <- numberOfDifferentStocks/30
+  listOfTurnoverRates[rowIndex] <- turnoverRate
+}
+
+turnoverRates <- dplyr::bind_cols(listOfTurnoverRates)
+turnoverRates <- as.data.frame(turnoverRates)
+
+averageTurnoverRate <- mean(as.numeric(turnoverRates))
+
+averageTurnoverRate
 ```
