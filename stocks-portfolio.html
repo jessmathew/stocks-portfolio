@@ -454,6 +454,11 @@ write.csv(fullLogAssetData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia
 setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
 fittedFullLogAssetData &lt;- read.csv(file=&quot;FullLogStockAssetDataFittedForOutliers.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3906)))[-1,]
 
+justTesting &lt;- as.data.frame(colMeans(fittedFullLogAssetData[,-1]))
+
+count(colSums(justTesting) &lt; 0)
+count(colSums(justTesting) &gt;= 0)
+
 numberOfRows &lt;- nrow(fittedFullLogAssetData)
 numberOfColumns &lt;- ncol(fittedFullLogAssetData)
 
@@ -471,10 +476,14 @@ while (TRUE)
   print(&quot;While loop index&quot;)
   print(index)
   print(Sys.time())
+  
   startRow &lt;- (h*index) + 1
   endRow &lt;- (h*index) + m
-
+  
   assetsDataForCurrentTimePeriod &lt;- fittedFullLogAssetData[startRow:endRow,]
+  assetsDataForForecastedTimePeriod &lt;- fittedFullLogAssetData[(endRow+1):(endRow+h),]
+  
+  #Sharpe Ratio Filtering
   sharpeRatiosWithStockIndex &lt;- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
   
   for (stockIndexForFirstLoop in stockIndexesForFirstLoop)
@@ -486,11 +495,12 @@ while (TRUE)
   
   stockNamesWithHighestSharpeRatios &lt;- sharpeRatiosWithStockIndex %&gt;% arrange(desc(SharpeRatio))
   stockNamesWithHighestSharpeRatios &lt;- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
-
+  
   stocksWithHighestSharpeRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
-
+  
+  #Correlation Filtering
   correlationBetweenTheStocks &lt;- stocksWithHighestSharpeRatios %&gt;% correlate(use = &quot;everything&quot;) %&gt;% stretch() %&gt;% arrange(abs(r))
-
+  
   namesOfLowlyCorrelatedStocks &lt;- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %&gt;% unique()
   namesOfLowlyCorrelatedStocks &lt;- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
   
@@ -505,27 +515,15 @@ while (TRUE)
     print(&quot;Second loop index&quot;)
     print(stockIndexForSecondLoop)
     currentStock &lt;- stocksToUseForModeling[stockIndexForSecondLoop]
+
     columnName &lt;- colnames(currentStock)
-  
-    meanOfCurentStock &lt;- mean(unlist(currentStock))
-    sdOfCurrentStock &lt;- sd(unlist(currentStock))
     
-    loopIndex &lt;- seq(1:h)
-    price&lt;-rep(NA,h)
+    currentStockTS &lt;- ts(currentStock)
+    currentStockTSFitted &lt;- auto.arima(currentStockTS)
+    currentStockForecasted &lt;- forecast(currentStockTSFitted,h=h)$mean
+    # forcastedLogReturnsForCurrentStock &lt;- as.data.frame(currentStockForecasted)
+    forcastedLogReturnsForCurrentStock &lt;- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
     
-    for(i in loopIndex){
-      
-      if (i == 1)
-      {
-        price[i]&lt;-as.numeric(unlist(currentStock[length(currentStock),]))*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock))
-      }
-      else
-      {
-        price[i]&lt;-price[i-1]*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock)) 
-      }
-    }
-    
-    forcastedLogReturnsForCurrentStock&lt;-as.data.frame(cbind(price))
     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
     forecastedLogReturnsForStocksList[[stockIndexForSecondLoop]] &lt;- forcastedLogReturnsForCurrentStock
   }
@@ -535,23 +533,137 @@ while (TRUE)
   
   tickers &lt;- colnames(stocksToUseForModeling)
   
+  # Black Litterman Model for Portfolio Optimization
   meanReturns &lt;- colMeans(stocksToUseForModeling)
   covMat &lt;- cov(stocksToUseForModeling)
+  
+  q &lt;- matrix(c(0.041,0.016,0.008),3,1)
+  P &lt;- matrix(c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,-1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,-1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 ), 3, 30, byrow = TRUE)
+  sigma &lt;- matrix(c(0.000801,0,0, 0,0.009546,0, 0,0,0.000884), 3,3, byrow = TRUE)
+  tau = 0.025
+  pi &lt;- as.matrix(meanReturns)
+  
+  #Calculating the first term in BL method(Sum of weights = 1)
+  tau_cov= tau*covMat
+  weight_1 = ginv(tau_cov)
+  P_transpose = t(P)
+  sigma_inv = ginv(sigma)
+  weight_2 &lt;- P_transpose %*% sigma_inv %*% P
+  first_term_before_inv = weight_1 + weight_2
+  first_term = ginv(first_term_before_inv)
+  
+  #Calculating the second term in BL method(Sum of weighted Pi and Q)
+  pi_component = weight_1 %*% pi
+  q_component = P_transpose %*% sigma_inv %*% q
+  second_term = pi_component + q_component
+  
+  #Final BL matrix
+  BL_matrix = first_term %*% second_term
+  
+  #Define the QP
+  Dmat_BL &lt;- 2*covMat
+  dvec_BL &lt;- rep(0,30)
+  Amat_BL &lt;- matrix(c(BL_matrix,-BL_matrix,rep(1,30),rep(-1,30),diag(length(BL_matrix))),30,12)
+  
+  # compute efficient frontier for eight stocks
+  varP_BL=vector()
+  sigmaP_BL=vector()
+  w1_BL=vector()
+  w2_BL=vector()
+  w3_BL=vector()
+  w4_BL=vector()
+  w5_BL=vector()
+  w6_BL=vector()
+  w7_BL=vector()
+  w8_BL=vector()
+  w9_BL=vector()
+  w10_BL=vector()
+  w11_BL=vector()
+  w12_BL=vector()
+  w13_BL=vector()
+  w14_BL=vector()
+  w15_BL=vector()
+  w16_BL=vector()
+  w17_BL=vector()
+  w18_BL=vector()
+  w19_BL=vector()
+  w20_BL=vector()
+  w21_BL=vector()
+  w22_BL=vector()
+  w23_BL=vector()
+  w24_BL=vector()
+  w25_BL=vector()
+  w26_BL=vector()
+  w27_BL=vector()
+  w28_BL=vector()
+  w29_BL=vector()
+  w30_BL=vector()
+  
+  sc &lt;- norm(Dmat_BL,&quot;2&quot;)
+  
+  #Expected Returns 20 values
+  Rvals_BL=seq(min(BL_matrix)+0.1^10,max(BL_matrix)-0.1^10,length.out=20)
+  
+  for (i in 1:length(Rvals_BL)) {
+    R=Rvals_BL[i]
+    bvec_BL &lt;- c(R,-R,1,-1,0,0,0,0,0,0,0,0)
+    qpSol_BL=solve.QP(Dmat_BL/10^6,dvec_BL/10^6,Amat_BL,bvec_BL, meq=0)
+    varP_BL[i]=qpSol_BL$value
+    sigmaP_BL[i]=sqrt(varP_BL[i])
+    w1_BL[i]=qpSol_BL$solution[1];
+    w2_BL[i]=qpSol_BL$solution[2];
+    w3_BL[i]=qpSol_BL$solution[3];
+    w4_BL[i]=qpSol_BL$solution[4];
+    w5_BL[i]=qpSol_BL$solution[5];
+    w6_BL[i]=qpSol_BL$solution[6];
+    w7_BL[i]=qpSol_BL$solution[7];
+    w8_BL[i]=qpSol_BL$solution[8];
+    w9_BL[i]=qpSol_BL$solution[9];
+    w10_BL[i]=qpSol_BL$solution[10];
+    w11_BL[i]=qpSol_BL$solution[11];
+    w12_BL[i]=qpSol_BL$solution[12];
+    w13_BL[i]=qpSol_BL$solution[13];
+    w14_BL[i]=qpSol_BL$solution[14];
+    w15_BL[i]=qpSol_BL$solution[15];
+    w16_BL[i]=qpSol_BL$solution[16];
+    w17_BL[i]=qpSol_BL$solution[17];
+    w18_BL[i]=qpSol_BL$solution[18];
+    w19_BL[i]=qpSol_BL$solution[19];
+    w20_BL[i]=qpSol_BL$solution[20];
+    w21_BL[i]=qpSol_BL$solution[21];
+    w22_BL[i]=qpSol_BL$solution[22];
+    w23_BL[i]=qpSol_BL$solution[23];
+    w24_BL[i]=qpSol_BL$solution[24];
+    w25_BL[i]=qpSol_BL$solution[25];
+    w26_BL[i]=qpSol_BL$solution[26];
+    w27_BL[i]=qpSol_BL$solution[27];
+    w28_BL[i]=qpSol_BL$solution[28];
+    w29_BL[i]=qpSol_BL$solution[29];
+    w30_BL[i]=qpSol_BL$solution[30];
+  }
+  
+  #Portfolio weights
+  weightsoutput&lt;-data.frame(w1_BL,w2_BL,w3_BL,w4_BL,w5_BL,w6_BL,w7_BL,w8_BL,w9_BL,w10_BL,w11_BL,w12_BL,w13_BL,w14_BL,w15_BL,w16_BL,w17_BL,w18_BL,w19_BL,w20_BL,w21_BL,w22_BL,w23_BL,w24_BL,w25_BL,w26_BL,w27_BL,w28_BL,w29_BL,w30_BL)
+  
+  weightsAverage &lt;- as.data.frame(colMeans(weightsoutput))
+  
+  # print(dim(weightsAverage))
+  
   
   columnSumsOfStocksToUseForModeling &lt;- as.data.frame(colSums(stocksToUseForModeling))
   weightsForPortfolio &lt;- as.data.frame(sweep(columnSumsOfStocksToUseForModeling,2,colSums(columnSumsOfStocksToUseForModeling),`/`))
   
-  # weightsForPortfolio &lt;- data.frame(matrix(ncol = 1, nrow = 30))
-  # weightsForPortfolio[] &lt;- 1/30
+  print(dim(forecastedLogReturnsForStocks))
+  print(dim(weightsAverage))
   
-  totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
-
+  totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsAverage)
+  
   totalReturnForTheForecastingWindow &lt;- unname(colSums(totalReturnsForTheForecastingWindowByDay))
   listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnForTheForecastingWindow
   
   index &lt;- index + 1
   if (index == 455)
-    # if (endRow &gt; 257)
+  # if (endRow &gt; 257)
   {
     break
   }
@@ -562,13 +674,18 @@ totalReturnsForEachForecastedPeriod &lt;- as.data.frame(totalReturnsForEachForec
 
 totalReturnsForEachForecastedPeriod
 
-write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturns.csv&quot;, row.names = FALSE)</code></pre>
+write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\TESTForecastedPortfolioReturns.csv&quot;, row.names = FALSE)</code></pre>
 </div>
 <div id="portfolio-optimization-with-equal-weights" class="section level1">
 <h1>Portfolio Optimization with Equal Weights</h1>
 <pre class="r"><code>options(scipen = 999)
 setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
 fittedFullLogAssetData &lt;- read.csv(file=&quot;FullLogStockAssetDataFittedForOutliers.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3906)))[-1,]
+
+justTesting &lt;- as.data.frame(colMeans(fittedFullLogAssetData[,-1]))
+
+count(colSums(justTesting) &lt; 0)
+count(colSums(justTesting) &gt;= 0)
 
 numberOfRows &lt;- nrow(fittedFullLogAssetData)
 numberOfColumns &lt;- ncol(fittedFullLogAssetData)
@@ -587,10 +704,14 @@ while (TRUE)
   print(&quot;While loop index&quot;)
   print(index)
   print(Sys.time())
+  
   startRow &lt;- (h*index) + 1
   endRow &lt;- (h*index) + m
-
+  
   assetsDataForCurrentTimePeriod &lt;- fittedFullLogAssetData[startRow:endRow,]
+  assetsDataForForecastedTimePeriod &lt;- fittedFullLogAssetData[(endRow+1):(endRow+h),]
+  
+  #Sharpe Ratio Filtering
   sharpeRatiosWithStockIndex &lt;- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
   
   for (stockIndexForFirstLoop in stockIndexesForFirstLoop)
@@ -601,12 +722,13 @@ while (TRUE)
   }
   
   stockNamesWithHighestSharpeRatios &lt;- sharpeRatiosWithStockIndex %&gt;% arrange(desc(SharpeRatio))
-  stockNamesWithHighestSharpeRatios &lt;- data.frame(head(stockNamesWithHighestSharpeRatios, 30))
-
+  stockNamesWithHighestSharpeRatios &lt;- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
+  
   stocksWithHighestSharpeRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
-
+  
+  #Correlation Filtering
   correlationBetweenTheStocks &lt;- stocksWithHighestSharpeRatios %&gt;% correlate(use = &quot;everything&quot;) %&gt;% stretch() %&gt;% arrange(abs(r))
-
+  
   namesOfLowlyCorrelatedStocks &lt;- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %&gt;% unique()
   namesOfLowlyCorrelatedStocks &lt;- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
   
@@ -621,27 +743,15 @@ while (TRUE)
     print(&quot;Second loop index&quot;)
     print(stockIndexForSecondLoop)
     currentStock &lt;- stocksToUseForModeling[stockIndexForSecondLoop]
+    
     columnName &lt;- colnames(currentStock)
-  
-    meanOfCurentStock &lt;- mean(unlist(currentStock))
-    sdOfCurrentStock &lt;- sd(unlist(currentStock))
     
-    loopIndex &lt;- seq(1:h)
-    price&lt;-rep(NA,h)
+    currentStockTS &lt;- ts(currentStock)
+    currentStockTSFitted &lt;- auto.arima(currentStockTS)
+    currentStockForecasted &lt;- forecast(currentStockTSFitted,h=h)$mean
+    # forcastedLogReturnsForCurrentStock &lt;- as.data.frame(currentStockForecasted)
+    forcastedLogReturnsForCurrentStock &lt;- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
     
-    for(i in loopIndex){
-      
-      if (i == 1)
-      {
-        price[i]&lt;-as.numeric(unlist(currentStock[length(currentStock),]))*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock))
-      }
-      else
-      {
-        price[i]&lt;-price[i-1]*exp(rnorm(1,meanOfCurentStock,sdOfCurrentStock)) 
-      }
-    }
-    
-    forcastedLogReturnsForCurrentStock&lt;-as.data.frame(cbind(price))
     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
     forecastedLogReturnsForStocksList[[stockIndexForSecondLoop]] &lt;- forcastedLogReturnsForCurrentStock
   }
@@ -651,17 +761,15 @@ while (TRUE)
   
   tickers &lt;- colnames(stocksToUseForModeling)
   
+  # Black Litterman Model for Portfolio Optimization
   meanReturns &lt;- colMeans(stocksToUseForModeling)
   covMat &lt;- cov(stocksToUseForModeling)
-  
-  columnSumsOfStocksToUseForModeling &lt;- as.data.frame(colSums(stocksToUseForModeling))
-  # weightsForPortfolio &lt;- as.data.frame(sweep(columnSumsOfStocksToUseForModeling,2,colSums(columnSumsOfStocksToUseForModeling),`/`))
   
   weightsForPortfolio &lt;- data.frame(matrix(ncol = 1, nrow = 30))
   weightsForPortfolio[] &lt;- 1/30
   
   totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
-
+  
   totalReturnForTheForecastingWindow &lt;- unname(colSums(totalReturnsForTheForecastingWindowByDay))
   listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnForTheForecastingWindow
   
@@ -678,7 +786,7 @@ totalReturnsForEachForecastedPeriod &lt;- as.data.frame(totalReturnsForEachForec
 
 totalReturnsForEachForecastedPeriod
 
-write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturnsEqualWeights.csv&quot;, row.names = FALSE)</code></pre>
+write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\TESTForecastedPortfolioReturnsEqualWeights.csv&quot;, row.names = FALSE)</code></pre>
 </div>
 <div id="portfolio-optimization-for-sp500" class="section level1">
 <h1>Portfolio Optimization for S&amp;P500</h1>
@@ -704,7 +812,12 @@ fittedFullLogSP500StockData &lt;- data.frame(
 )
 names(sp500StockDataForFinalTenYearPeriod)[1]&lt;-&quot;date&quot;
 
-fittedFullLogAssetData = cbind(fittedFullLogSP500StockData, replicate(30,fittedFullLogSP500StockData$Close))
+head(fittedFullLogSP500StockData)
+dim(fittedFullLogSP500StockData)
+
+fittedFullLogAssetData = cbind(fittedFullLogSP500StockData, replicate(30,fittedFullLogSP500StockData[,2]))
+
+head(fittedFullLogAssetData)
 
 # fittedFullLogAssetData &lt;- read.csv(file=&quot;FullLogStockAssetDataFittedForOutliers.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3906)))[-1,]
 numberOfRows &lt;- nrow(fittedFullLogAssetData)
@@ -726,8 +839,10 @@ while (TRUE)
   print(Sys.time())
   startRow &lt;- (h*index) + 1
   endRow &lt;- (h*index) + m
-
+  
   assetsDataForCurrentTimePeriod &lt;- fittedFullLogAssetData[startRow:endRow,]
+  assetsDataForForecastedTimePeriod &lt;- fittedFullLogAssetData[(endRow+1):(endRow+h),]
+  
   sharpeRatiosWithStockIndex &lt;- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
   
   for (stockIndexForFirstLoop in stockIndexesForFirstLoop)
@@ -739,11 +854,11 @@ while (TRUE)
   
   stockNamesWithHighestSharpeRatios &lt;- sharpeRatiosWithStockIndex %&gt;% arrange(desc(SharpeRatio))
   stockNamesWithHighestSharpeRatios &lt;- data.frame(head(stockNamesWithHighestSharpeRatios, 30))
-
+  
   stocksWithHighestSharpeRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
-
+  
   correlationBetweenTheStocks &lt;- stocksWithHighestSharpeRatios %&gt;% correlate(use = &quot;everything&quot;) %&gt;% stretch() %&gt;% arrange(abs(r))
-
+  
   namesOfLowlyCorrelatedStocks &lt;- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %&gt;% unique()
   namesOfLowlyCorrelatedStocks &lt;- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
   
@@ -758,13 +873,14 @@ while (TRUE)
     print(&quot;Second loop index&quot;)
     print(stockIndexForSecondLoop)
     currentStock &lt;- stocksToUseForModeling[stockIndexForSecondLoop]
-
+    
     columnName &lt;- colnames(currentStock)
     
     currentStockTS &lt;- ts(currentStock)
     currentStockTSFitted &lt;- auto.arima(currentStockTS)
     currentStockForecasted &lt;- forecast(currentStockTSFitted,h=h)$mean
-    forcastedLogReturnsForCurrentStock &lt;- as.data.frame(currentStockForecasted)
+    # forcastedLogReturnsForCurrentStock &lt;- as.data.frame(currentStockForecasted)
+    forcastedLogReturnsForCurrentStock &lt;- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
     
     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
     forecastedLogReturnsForStocksList[[stockIndexForSecondLoop]] &lt;- forcastedLogReturnsForCurrentStock
@@ -785,7 +901,7 @@ while (TRUE)
   weightsForPortfolio[] &lt;- 1/30
   
   totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
-
+  
   totalReturnForTheForecastingWindow &lt;- unname(colSums(totalReturnsForTheForecastingWindowByDay))
   listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnForTheForecastingWindow
   
@@ -802,7 +918,7 @@ totalReturnsForEachForecastedPeriod &lt;- as.data.frame(totalReturnsForEachForec
 
 totalReturnsForEachForecastedPeriod
 
-write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPortfolioReturnsSP500.csv&quot;, row.names = FALSE)</code></pre>
+write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\TESTForecastedPortfolioReturnsSP500.csv&quot;, row.names = FALSE)</code></pre>
 <pre class="r"><code>options(scipen = 999)
 setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
 
@@ -825,20 +941,1030 @@ lines(cumulativeForecastedPortfolioReturnsSP500,col=&quot;blue&quot;, lty=1)
 
 legend(&quot;topleft&quot;, legend=c(&quot;Forecasted Portfolio (Optimized)&quot;, &quot;Forecasted Portfolio (Equal Weights)&quot;, &quot;S&amp;P 500&quot;),
        col=c(&quot;red&quot;,&quot;green&quot;,&quot;blue&quot;), lty=1, cex=1,bty=&quot;n&quot;)</code></pre>
-<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABUAAAAPACAMAAADDuCPrAAAA/FBMVEUAAAAAADoAAGYAAP8AOjoAOmYAOpAAZmYAZpAAZrYA/wA6AAA6ADo6OgA6Ojo6OmY6OpA6ZmY6ZpA6ZrY6kJA6kLY6kNtmAABmADpmOgBmOjpmZjpmZmZmZpBmkLZmkNtmtrZmtttmtv+QOgCQOjqQZgCQZjqQZmaQkDqQkGaQkJCQkLaQtraQttuQ29uQ2/+2ZgC2Zjq2kDq2kGa2kJC2kLa2tpC2tra2ttu225C227a229u22/+2/7a2///bAADbkDrbkGbbtmbbtpDbtrbb25Db27bb29vb2//b/7bb/9vb////AAD/tmb/25D/27b/29v//7b//9v////8vu3MAAAACXBIWXMAAB2HAAAdhwGP5fFlAAAgAElEQVR4nO29DZ/URp6gmekE9sg6wxnPwOHG9AK3eGfHjItmz+U7uN5s8IBnyKJw6vt/l0u9heJVigiFpJTyeX7dVKZSCkWonE/F6z9WGQAARLGaOgMAAHMFgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgc6Tm3+5tzpy68GrAW/y56PjLda/tJ/0/q8BJ7fw5WIlc+v+0z+6L6pvPgaH//mXb/Oc3fvu1ee0KV+vLNz53PuRwvAg0Dny4XHzRVs/G+w2Hl/gY04eep/ciibQnO87RNXcfHhufpBz9uBdyrQR6HxBoPPj8DrMM9F0foFvXh5PGE6guUT8bj44/9Byl/TPFgKdLwh0dhxeBHmmB51f4MvVsAJt9eNl1wkJ2YVlLRAEOl8Q6Oy4LKtAeRfh1zcXqb/MMkEC7UshUHGzry+Lgn3z93Fu3kHlz9t55+eh7j9Jf+vdkH8NYRAQ6Ny4ViqdN4+6PNODCQVa/514Ps7N2/mi/Zl6X/4JS141RKDzA4HOjD81Y5Zf7mE8MqlAr7uqeaMJtOozkXo91T9iyUCg8wOBzoxrvWJ2Kb518vev/NI/r084iunwJp/4dL+c9vQhH1O+97T+rjquVAX6tUhgtb5fXSb33D2XTi4ydLfOnpLGx5cXxX1tE5R0gWp/GbRLtZs7CrArk/jHt6vVrWOur6sUi7TW8kj6h2qGknVWWJmTu/Khy7oKGlJYLTcmukCl5Dx+iV0PGIYAgc6MS73Jfr3+7l/fFl+iVoGKYeTjCTf1LKj6u+4jUGkcel3MvnQJtPCNyKGU9E0z+mWZONAqUOPSEIG+rk8rBSpKL+wsj1/dNivcO/lRaZkLKayWGxO5FNrz9/gldj1gGAIEOi/KFvxd62cOixTfvXuNIu78e+OL6qvvuFIW6G4lk6vHJVApAeWNMsxuNlTbmvDmpQECvSeKWlz0nZRWmfq1Mv5vdFmU6akZFsdCCqvlpv0XqD1/j19i1wOGIUCg86Kty9NhkctVCw/brpS+wNoko/w76xKoklpTQyvVLzD+BmgCLbNRvrdcGiDQpqTGdCFbxgz1WP9miYZAQGG13LT/ArXn7/FL7HrAMAQIdF4YXaASDotU373v/8gOf6u+XLffZtn7i+Z0x5X6F/j2u6xqOVais88DNSqud8W562ef63UAehkUgX79+EKygP1S+eaOAkjKylOuBHr7VZZ9uBApFUe/+bf8rtacWf9m7eo0Awqr5ab9F2h7/u2/xK4HDEOAQOdFtEBLAZSvJWuWzb9OgRp1UdNh+rf9oUisxaoSton0UgXUvNRfoHWHoDx43jzInZTO5a0ff9YHYNoFGlBYLTcmnQJt+yV2PmAYAgQ6L2IFKnd2VpdfBwg0O/z+073yG1m2FFsFei2SK+TTdFrelU7VewEtAq104LjUW6BCSfLDK4vxsD5p7Q7K0iFQ/8JquTHpEmjrL7HzAcMQINB5EStQeRyj+mZJbeZugTZ4CLRJYidOkE9tqmoShkDXdVXNcam3QMXTupasXJ71ULrxrR9/s7qtQ6D+hdVyY9Il0NZfYucDhiFAoPMiVqB3pct7CPTw8V++lXLgWgu/q25ZpFXczlzAb+9qFNwWszRdl/oKtCmAXPpGoHL6a0uYpQ6B+hdWy42JXArtkXb+ErsfMAwBAp0XsaPw8ndPHjMOEOjNmx8utC+nS6D1cHTTrLR8v7VCiOxUC/zFfV2X+gq0acrK5pEu//OxnPZtXaHto/ABhdVyYyKXQnuknb/E7gcMQ4BA54X5bf5yv47v67BIGoG+VyuI7QItP3he/8iCBComZiqzK81LfQXaGEkuvXz54Y1cOL2OWKaniq/8NVRJ+RZWy42JfgICPX0Q6Lwwv835t65seMrfP6mnMlCg0pXSF7haP3Pvx9/+o7sPtB7RKA6VyTYtZhfyNKadbDLXpS6BSgXwFGiWV3u/FeLRh68tYU2Uhfq+hR1BoDhzbBDozNhp32bJqAMKtBx+eaV97hZoOQz860XzcWfoD2UeaOms6u+E49KkAs359D9/kG+r5kwxnzzL37+wgwp01PCoIECgM0OPxrRrKk1yF5802OQhUMeVzRdY+nZ6CbRZtmhbbm9FEWi1quZu26XyzR0F8BLo4eObH/73XyyZqKlax5KcyocuEvYs7LAC7UwdhgCBzg31y/tFGnCRzFF954MEal6pLW+Xln12ClSMqasZrRafr797+lb/qqvuqhYNPW+51BCoWQAfgSq9ympsECVrq9U/K8KUPOtZ2GEF2vmAYQgQ6OyoI9J/FmsPq29WJdNjQ/vjY8k/HgJ1XKkJNN8HqL6jJNA777KPfxhznurF28/VA99/zg7/MJrEWnaa06VFisal8s0dBfARaH2nvBu5DDZvOq405urWs8/2iPR+hR1WoJ0PGIYAgc4O555I5ge+AnVcqcUHkZFro6umJqfNuTQjP2t3kNAEWjXiH7ovlW/uKMBOFYldoHowEdv8ydd68mp3o19htdyY6CeECbTrAcMQIND5oe/KqS1VLFj/RXyHPL57jiu1tfAV9y5Wap13ZROo0otZ3kP5ghvDHfZwdsq8JvVS+eaOAmhGcgwiaeaxDsS078rpV1gtNyb6CWEC7XrAMAQIdI649oUXkzVv/7ITFvH57tmvlEOIiPC9z+SF1rXK75rLlopklPGYJpLxyrIrsC7QqlJZZtZ6qXRzRwE0I7lG4W9euswoZV46x9wX3quwWm5M9BMCBdrxgGEIEOg8+fhTEV1X34Pi6+tvj1+efGp9oECtV8pOPLzPb1hsRSGP3hTbStz67pUp0Ca0hpTrl/lsy7WY+i9jDICrW7nZLm1u7iiAp0CP6vmX4nHesuas4lDt+3G8oXGSV2EHF2j7A4YhQKAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARIJAAQAiQaAAAJEgUACASBAoAEAkCBQAIBIECgAQCQIFAIgEgQIARHLaAl0BACQjvaKSp5iQqZ82ANRsNuX/O9lu5debkpZEg3KwcqflRXJHpU4wJQP8wQCAKDab8v+dbLfy6/ZLvBJUTg66QgeBAsAknIhAe4FAAWAS4gTacYWvE48N9wT+RKAAMA0TCrTqR0WggSBQgFPBV6CyP48XbJ0n1on63hqBhoJAAU4E7xGcUqDVmekEmqIFj0ABYBKCBCoa3F0C9dNiCncWIFAAmIJAgVZNbgQ6JQgU4DSoK5SdJxYt+KrTEoFOCwIFOA3CBVrVQxMINJk/ESgATIFFoKrX6sF3RaBHfyLQ6UCgACdB7TDZZeq8om2lyqoLtDoBgU4JAgU4CbwFKlVAAwSacL1nKwgUAMYnSqBZgEDbHIlAI0GgACdBp0C3uUC3222oQOvpUU5HplnDWYFAAWB8LAJVw3v0FqhLkin9iUABYHyEw4QaXQLdaGcnEGh0rk0QKACMji7QKrpcI7fCnpmIPy9d6tUJ2hKsDoHGg0ABTgGLQDe6QIv6pxl2DoFOBwIFOAU0gZZL3eXjpUBtDfFYgW7lz1OBQAFgdFSBbvQKaWlJ+/YdZeO+PWlLqNFtVafd5uNQ9eBUbxAoAIxNIzctJpNboPt9Jj5qtZ9doFuBEOjW+ChcqwgUAMYmSqB78VG4QOs5UUongYOQgiBQABibWIHm/+8SaN3/KXeDShfI41QWYwYaFIECwKgo4+oOgRY/bQLdZ53VRFmgso/VOzgJMigCBYBR8RPoJqFAxenH6zebvcB+fYhBESgAjIoysdMu0Hr+kirQvRBo6zi8W6B7TaBOg3qXBYGOwPVK5eEI97x51XHCn49Wdz7LB3ZNBtf3nv4RdJPDm2+PV31vnHB4sfrm7+JHF7vVXfH6w8tjiqtbD9qLUWagO3nPDDRUT+d43fOQy8AHpRGtD/dI80KVUwt71gKtp4k60xfLOcuegKYCqju5b1kQ6AiML9DD686btAk0d+hfA25y9EzOXfOUEIF+uRAnvb9oMvKsMwPDCVTOEyRC64TUprwHCdRu0GYDz6ojoDyvqnHKN+tvUAQ6AuML9Lr7Jh0CXXVXvZqbXLvKFSLQprZ3FKOMmk1LBgYU6PGpOG8PcfQQ6F4WqLsnVBaoiD5SNdnVuyPQMCYT6Bit9rA72gRaO/OQ1wA7jdPcZOeyXIi4GlVd5hXP7z8dX319c9Fi0AGfq3g6xxcj/+4WT7dAN8XOcWrjvhpCKgSaiSlIrjvUAt0KgdaVTe3ufQ2KQEdgdgLNm67dVVBFoPaTAwR6vONzkdrq+zprRW3UUZYxBHrMDY34pOjTiEyBbppl8TaBlrSNJCkCVf1pClQnrDQIdARmKNC8Fmh2abpukkKgl3V2jhlTMn9MfP1LRwaS0zwdqqCJ8RFoHURZ9WdWjsNL17o7QasftUAbMeq3Nw0apFAEOgL2L/rhww/HytX9V6Ldeufzh2+PB97ln72/J3+WH8iHuR+8q99/fZOfsL4vhsGLC26Vg+d1n+vzzJbUzcu8gfy5Q6C7WqCubL6pb5ILr+kCVU83+kC11BqOFVBHf0A+QnW3PONudvNDnnmtlFXyRYmKB3U7fyyHvPl/65mUj2qsS+5Z9Xg6VEHT4i1QZbpTpECzahv55qquefSBBkWgI2AV6M3j6pt8u7Ti0Uzvi1HnX8oGtPxZ9qU6eS21cmUPiAuKG8kCNZKqLr3zH34CdWbzX6wC1U7XBaqnJt+vqmbmllOrs9dlf2wu0Ko0xalWgf7nizov9a3uNvkwBerzdBq1QwIMgWnhPtsFmoUKtErEX6CB3aIIdARsAhXaqUdrLle3LqovfKPD6rPm5NIyjT/LlKXEcvlIAjWSEpf+l84m/MPWbIqbyALVT9cEaqQmP44qN8ccm59Vf1X+t9qA+XurQP9bfcK/CVk+z5wC9Xo6RlUdYtlsLGGOAwSqvMhxCrT4UAh0EyTQIIMiUAlLd4gfHXe1CfQoqPXTz2U78251YHWnqAflmskbocVYeP1ZPh0yr1TdrU4omrEfH5ciOH7vb789vr95UdWs6jsaSRUH3lUTLT0GkVqyaesD1U/XBGqkJt+vmRKl+aqqkxa2q/N+V85AI9DyOdwUns5P/aDmQypqfYHH07l09cFCIGZ0+cwQaNbs/d4t0NY1Q1tpNr2zC9RGSCMegUoMKFCJ4rt/tEH1raxfXYqvbKOQqu5V/RAvroV+quraZS2wWhS1WoykdnKj3ynQT68vRBXNmU2LQI3TVYGaqVlufm2OXpW14SbH9dUWgZYnXK+kV9WKIkmg100ngM/T2XnMiQUfrBsKWwWqf9J8x0yBuiTaWDhQoCFVUAQ6AhaB7hpNVI3lS6EjqcZTKqJxiv5dPn7xczHsRK1Quc5M6iiS+sDOIlCZ4ry2bFoEapyuCtRMTXAp58sp0PqcS9HXqwv0ef1YqlOrB6QI9LqeouX5dMafRLFUrPYSmtwK420DBWo3aJ1cJgnUy58hINARsAj0sjFhMbosHZH73MrPHFWgr7//VM13L26w/u5fhRCvRQ+mmlTlk+p961LOXzqyaROocboqUDO1GklwbTVQqe57N7MJtErEeCULNK9d1v0bXk9HyytE4xJo+aKaGi9t/d5LoEoEUDGLHoH24lQGkaS6Tv1dvZQqTTLHz8xOuMOHH+rxj7pzsdReFQTk2hxcKpL6s2VsRBLorWpeT1s2LQI1T1cEaklNeh6SQPUxm8u6D/Ruc3W0QPNnctf+oB1PB4Emwm4vTaDbDoGao0geAh2sAopAx8AqUFEjqr6rl1L/YJdA5VPK0e43yjym+o5GUpK3OuaBdmbTLlDtdF2gemqWG7WNwksCza+OEejhhRC079Mx6uoQR6dAs2ojTn+BtoSnR6ADcEICdVbtzO+rLtCy6nTr/o8//0fT6PzwUjJoI1A1qY4aqEWgo9dAW+eBNlfH1kAvV7KqvZ4ONdBE+AtU/0iWpk2gNoMi0AE4FYFqXYll56I67iGhq20nJn6r53799WVZZZWa8GpSHX2gRk9rSzY7+kDL0519oFpPp1w53blXIvXvA91J60J9nw4CTYSPQDMEmjrBlJyMQHeW4e22pTjNtKW7ck2urJypPXzVqNJDW1LSAd1TVoG2ZHOoUXipk1IkXnwmte0rE4cLNB9tE4X0fTqMwqfBYS9xWAh0u9U/ahOoK6gIAh2AkxGobYKlNIXmm2ZloTKB51KdbZPPGK+qdtUNVIGaSQkxNJMma2wCbcvmQPNAndGYvojZ97VKgwUqBuAdD9r+dGwPBsLpsFclPKsPIwSqbCNnD2WXAgQ6Al0rkYqvamOm/Nu7fnY89vX1Ssxez1ci5TKpfJk34cuRo3pVo1iaVDVui0SNpIq1Nm/LJToeAm3LpjReLi7VT29ZiaTeXFlwXsQDfarHAy3GfB68kxZo1RnwFage58nz6bASqT/6xh0WauPZGuRugTrD2iHQITgdgVoWmctmEjzUTn6ofS4Mq6RWDjA/tyQlDvyTxyBSezbFTZpLE6yFz7FGpD/e7pYyd0tkwFegl3qyXk+HtfD92VhXwau0CFRxpkWgNoOqAq1feObXHwQ6Ap7RmJp6zrU6KUk6uXxfC2b99IUY/65TKxIp3z+0JVVtN9QVjckjm81Nmkv7R2Mq+FCfJ+2JlPf/VoK73UxJqvo04gTq9XToAu3NBoEGpJg6wZSckEBFaMzqrdJQPLyRwnsWB/Iwl2Ws0Jzi0ltPPzfjSx9fXqykwJaHfDz+e2tSN8czu+OB+mRT3ES6VD3dGQ/UuI0eNO6jsStnMYCWx/W7JbaZqzIQL1Cfp3Op15YhkE0TZb6FRqDGR4ZApQMIdEzYF/5kuexqKE80m4iI9L2poyK1n9USWMkiUHHEIdD8SDP2PlgXKAKFE6HZE8l9whQCJSB9bwYWqPXaUqCqOBFobxDo6dK1gfA0AqUC2g8x/N4lUF9/6gK1Xy1thLRHoOlAoKfLUVWtVdBpBMq+8P0QIUDDK6COGMpBAi1AoMlAoCfMl4vWxvIkAv1ywRzQPlhj0Js4Zs/v6xfa8U6Biq2MEWhaEOgps2s15BQCPbxgEVIfqvF36YgrcpJ18pJLoOYuEOrV21qgdS7UnylBoAAwDBtzAZIr8EeLQHVZ+ghUubDKwRD+RKAAMBAWZVkFag3quUegpwcCBRgLm7HcAtUPphNo5jeMFQUCBYAhsI4eWYN3Wpv1tSWNLTJ9BarvBY9A+4NAAUbCKiybQO0DS8Vge4ZATwoECjAS/QQqlrzbBGoc9BDoIP5EoAAwCPYWvMWXbQI16pp2gappINChQKAAI5FCoGZj3UOg+hgSAk0GAgUYB0cL3lOgVevd1CcCnRIECjAOaQRqSWOvRQQ10rAKdBh/ItAxULbgWI0T4PzGjFmsYguoLKLA32siDHvd5PDm2+NV3xsnGAGVWymXcu60pxW7flO7qbqN86Xya9hZ7+LKtby/vcD+vM95KWgvgVrNKT5DoFNxLgI9vO68SZtAc4f+NeAm1Y4ipoSCBFoFExlIoMfyNtorNmdqEr60BuMPEKjzeXcESFkulhgitTytkZNU7FVP8WGGQCfiXATqsY9Ph0A9tvJtbnLtKleIQOva2kACVSxZZFh82uwA0pqAdFwXqPt5n2U4PHsMpnr/TC+Bdt2iW6DSGQg0Fae0J9LEd2zbE6nYObhTecq+8HZNeLbdq0TKNHaJtmHX7y0/k8vV+klzm8A4T0ECPceAzPYQdts6YsgkAh3Inwh0DGYn0HLH4C6NKQK1nxwgULGlx1AClTpB8yrn/9PsYrcL+/0ECfQctwSxy8oi0PJVxy6cdhDoJCBQQceunJfdbee0AhWbyg0lUOl9vpfp8W11Q+ugUHvCAQI9wyqoa/jIIlD7hkaeApVPkxIxukARaDJOSaD1Dr9i99w7nz98W21dfHh/T/6s2tZ4/UDspv612I53LfYHLi+otuet+1yfZ7akbl6uPLY1FgPTrmy+qW9SDMiILlD1dOe2xkaDv9nW2CHQj8cL10/rbEsSa2qW6kMx5N10ghavxE70zZNQn1WTwE2R6XfKvaVfiPy8lV9EVZ5zq4K2jL8rwnQ06X38aW7soddrEegQnJBAbx5XX7vbpRWPZnpfDH//Ujag5c+K7dCLDysDNAMt5VdfXFDcSP5CG0lVl975Dz+BOrP5L1aBaqfrAtVTk+9XC9Eu0Ndqtm0C1R6KIVDxayg/ua7vI45rz0okUCf8T829/+1S+oVIz1v9RdSpLr0Kqg4auVrwukBdfaJDCHQof85YoIePv3nNVVQ4HYEK7dSjNZerW8WX7678Law+a04urdGookxZSiz/Flu/0JoMVv+lswn/sDWb4iayQPXTNYEaqcmPo87NziZQke1/cgpUfyiGQMU9ykGj49u7dVGfV4dtmVcmUdT3/lY+s3ne2i9CL9pS2SgG1WRV+awRqHTEvqc7Ah2O36+uitpBWZXxmKyo0l7cbSwdd7UJ9LJokGaHNxdVVS+v0twpypZ/C2+/qsbC68/Wz8pC361O+D7/6/HxcfmVPrrj9tv8qbyoal/1HY2kigPHu+TvfQaRWrJp6wPVT9cEaqQm308a0pEpMpln55jtg8i2KVDjoRgClWuUZdkUTxrPqvrAeGTFrNf1s2M5/la5WjwK4xdRPpSFb0xXR4uzbz0kWROB+qSYOkGJ4r/h/L/M6wv56+XPZAKVKMxx/NZX36r61aUozLV4VU3+FnPAqxfXQj/Hi/PvuOjdkypND61J7eRGv1Ogn15Xn7Zl0yJQ43RVoGZqtpvbBGpk2xSo8VDMAazqJvW1O9HJcdf6rKoEbPdeffOuTrG+tngUxi9CK9sy0bbMaBNoVr9sjvQSaHMmAu2m/mrdzSsF6ydPvl2FTrM+hYn0RY53Tc6rxvKl0JFUYym/mI0b9O9iNQV8J2qFynVmUpJ3dhaBytSOcWbTIlDjdFWgZmoCKaMWgUrZvnQJ1HgopkCram59QfW2zrzx2KsEmrGnXSPQh+q9pRroHb13d4JJGOOitd11V6nVTullVSeNmQXaJtD6hSrQ7hTjmJNAi3bcz78eW2h/af57DfvjfjIClZbFVDUgcUTuMys/c1Rhvv7+04XUCbf+7l+FR65FD6aalLTmxvCOKq5SJi3ZtAnUOF0VqJlaTUeFzcy2U6DNQzEFWvV67pr+jfzCSpzmYy8T8Lq3VONXfxGWsi6OdoHWdcyxBSongkALLqUuqLviUNB/m6cyiCRPJay+hKICJA9ElDUwsxPt8OGHuhOj7lwstVdNn7k2B5eKpCRLtC3lvFXN5GnLpkWg5umKQC2pSc+jTaDqHHiXQLWHYpmDeqlmoyhL/RzMxy4E2n1v8Sj0X0R10pIFKsnJFjbOKdDqqCsSUwdlSDtDoE2XAALVycVZfLOuV+7mWwcnJFB5JbZiJmkw2CVQ+ZRyIOSNOn2muqORlGmiBou42rJpF6h2ui5QPTXbjWIFqj8Ui0Cv84uaxIqJTHUpzMdeJuB172aGlPaL0HK/RKYUqHRqnegWgToQbSmpUeUIA+HkhATqrNqZ3zddoGVl6db9H3/+j6b8H15KX9xGoEb3YKBAT6IG6lMLNB6KRaBFr+dO7sF8KCagmo89pgaaab+I6qQF1kDFxCVZTuaMdSFPl0DNlH38WbfffQXqk2IUCHQELKMIaldi2bnYNOHto8fy+2oiunru119flnUnqQlvTIVs6wM1elpbstnRB1qe7uwDvV6l7gM1HopFoMdDd6US5Ks5//OF+V+VkqmgPtCK5hdRnbRUgeo1zmCB2kgv0AGZkUDFf7fSHJi5NuGtw9tVoURXhXx9M0PnrvwFvl5pbePq634t5pKrSUkHdq3zQLuzOeQofIvI62w3F+zq9rb6UGwCzZdV/n+PZFfnb+/qj6ZC1JvNUXjlv7/jV7V53pY/7csbha/Dw230OHFmHKZxBSrNikKgBpfSXO7mmzvLQSTrBEvJCN806y4fyidfqnORbh6t6qpddQNVoGZSQpt5i7dboG3ZHHAeqJGPayPbYvjw5pEm0Pqh2AR6XSxBvau+bfSoPit9Hmh9b1Oge2keqPqLcBVo3sjNd1WY4wm0mkYvTtZ7BBCoQT5H5PtPn16vVveauuhMpjG1rkTSqlTFLNdnx2NfX6/E7PV8JdLhtfBl3lotByyqmfXNKpy7WSMcI6liWc3bLPvQsRLJI5vSzHNxqX56y0ok9ebqSiQjH2a2d3mRP0trk4yHYhPoMZ17UvLFW6nOqFlj4scAACAASURBVD4rbSXSB9cqqFKgdVNe/UVk6iNbCE1F0xCmOQs0swvUvfwEgQ5FPUfkzr8f/1t+cHX10pBAF6cjUMsic9lMgofayQ+1z4VhldTKIeXnlqTEgX/yGERqz6a4SXNporXwKkpMlFsX+qyj//qo7vZVH4pNoMWDko7mb6X6qPqs2tbCSwL9X8dvsngU+i9CLdpCKOqdDoHqDClQ5WR9VSgCNTm8rr8dO/2/Uk9OR6CWMEdNPeVanwsjTi7fv6498fSFGP+uUysSKd8/tCVVLoftjMbkkc3mJs2laaIxqciRPvI+yzLbdcEe1oLSH4pVoLuV0umzW8m/Gu1ZtUVj0gQqHoX+i8gW2gUqTZ5vFag+O7M5aheodcviNuwCte+HPASzEuixZfTTvftP82/LP8r/1h8E/mk/IYGK0JjVW6Whd3ijRZUs4oGWsUJziktvHZ+EGF/6+PJiJQXaPOS18++tSd0cz+yOB+qTTXET6VL1dF2gemoNSjxQi0CPfz0v8kZ7k+2v+YFjSuKI9lCsAtU6fbS+WPVZNQlU8UCr4XRVoKv/lX+Jm+et/SJEzJIFoY27tyEWHfkLNMx9VoGGJtKDmQm04fD7T09+Do5nx77wJ8ulX0N3ygaxdT5SV5VpeRHpQ2ZVOgXqaMH3EqhUAQ1IoR+zFWgcCPRkEXsitTO+QJVA9qYLuwQ6VED6ESWhMZRAq2lJYQVDoKOCQE8Xvw2AJxHoOu9y+Pra2uXe8ZUfrAI6WiPVoL9AXTFEQu2ZqRNBEejgINDT5agajyro+AKVF8lbXNjxrR9qX/jxevkM0gjUPDdKoJmYzIRARwCBnjBfLjwauxP0gb4344NI6NtDqny5GGgO6CQCtcb7bKNWmq9AI8ok4toh0Aja18Lrw7k5I2YOAtl5LCubYhDp65tv1YkMEupsbp3Di4EWIUVV1vqyMZZudoFAI1JMnWAbCBSmpV2gw921td47DJuUAjXPLf4mRAm0/B8CjWAe0ZhguUwl0PHvWtkzKDScFCa+a+OweIHuEWg8Xz8FzQVFoJCW8VUmKp9D3tWiySp2XUwFdGiBZgh0JBAopGUKge7ruw53X0tjXdu82Idwgfqn3VxW/QYQ6AggUEiFFMxizCGdvSLQoe5at9eVQ82/noQINLYoskB7JhUDAgWIQhrICV6A2O+2zb2qF8lvXYYL2QQserehBGAaTqDVvwjUk8On36+urn77FDOZBYFCKkyBjvHFLXsK99LbIRYllfastuwQh0IZRaDiagTqw8eX0pSkB29DL0egkArJmft6MuLw39zqTlImBhJoM2tpIw4FgkCjUkydoIQIJ2kEXfQEgUIq9ErnKAI1apyD1H3FZnFNO97Xn8bOHeZrKz1LgEB9KAPe3ntSkq8OWa3DFnpMJtDDhx/yzN/6UQkkXIS0vPWsOSDFwlzfM1e+NOF6m6iWeXjP1fqBlK55BAZgr/V8TiNQpSKc6i5yuOSNdbd3J1t54CjglghUpJg6QUGxaY0cijffpSYsVthUAm2WU6/uNGKrw1Q0axPVYMLrv2rJSFti1AKtU27ONY/AEFjmLY4mUOvxdAJHoN7MSaA72046YcHCJhKosl+PKEOjQ1EGVaBGiPhr46Nr41zzCAyCQ2Oj37Q+nq4G3MhS7Pzu3QOKQHunmDrBGnPjbnljSD+mEWixr2Oxx8MneT/KXbE10EEOM7mT9sZ4b9avd/oTqHeMzDeBLM81j8AwnJRAmwU5Cegh0G2kQPtmHIF2Y1v3Po+18DtJ882mPPXWOtIWO6ohzU2bje11RMr5X5eH9iMwCLZv6bQCTZYBw5b+y4+EQJ2bdthBoE2KqROsma9Alf3idmJbyPrwpUOgeSx0Jb7b0YlqfVvfodx2BIbhxASaMAOmLUMEWu3uZo057yBF58N+39wPgVqRa2o182jCKwJtdiarVCpHuFQFutMEejxTDZgpXVo9HfMIDMN5CdT32lKg23CB+p7rTsP2cnhmJNC8QqbZMm+mdsfglZisCW9rTJdDYB/knXXbBXr8c/H8Rt4W+Fo6odz7zDwCw3CSAk2Sg5gp8+Xo0VbUPr3Ch9SkyDQC7SbvE7wjz268OfozrJI1jUDzjH9vCbuXD5jfU+ayGk14Rby71fov1QD7g89VAg/VS80jMAwItKY0pqh1VnXPgC5QBKqkmDrBhmKSz/rJz1c5v5Yz6cPGSdqLu4nFL+PfGfvYF8dvv1MOtAwiXUqzmIq6uHx6qU7zCAwDAq3Y1uqs6pwBVc8KBKqkmDpBCWk+ejVZ/Fn3RTITCbTJ+P1XTSfEIZ/TpA6CSf779PpC67LIOyzWTz/nS42qvxwIdDoQaEld3wwJ/amS5KkhUC9K5wh9Pg0dZZ5wKedjPdN/PpbqkhXaRHq1f+LPR+LArhQvAp0OBFogqp3x90OgaoqpE9Q4fLx68+TJk6dXbyPm6EwaTOTjmx8kY+ZDSA8+5830o+X+/Olp0ZDftfhTplpUgECn4zQFmiALoRXQvvdDoFqKqRNMyeTRmETru57nfl0subxuOjVrbsmtfYOdQ5cIdCSs31IEGgMCVVNMnWBKJhdoMTSUt77FfKPLvKZ52awj8hs4L+XIKPxk2L+lg393EWh3Igh0OCYRqDYf81JtfedV0Vv1WFK4QJkHOgmOLykCDSfNM0OgozCJQLX58KUkG7uVQZkeSp/5pfmclUjTgUBLTqUCikDHYRKBVo32isprklW/NGGXWgW6a5rn1YA8a+EnoiWq3CT3TZODXvtuRpNaoKP6E4GOQN5Ib2bLVzOQysGjgjwu9OpZ/aFboI2ID3WYkR3RmKbAuXZ77gI1NoPvAoEi0OEpIs8/yKddldNB61H49bPP+V4f5ah7YdBWgdaXFLE+y3pmEf3zrREP9C3xQAelJajcRDdOkoONvpVxN6fSBYpAx2GiUfj3yvTOsul+I23Pcfu/H//5/nNXH+gXaRVBVbkkIv1IKF/LZQq02ss45JKTqYAi0HGYahrTl2Y7UbFVUbPF6FGdVcu7YxBJJNPsd/QPYwck8wj0R9vIzXlW++f9c9H/DCfh9c8TEmiTDgIdkOnmgX58eS+X2v1/ldbCF633W+Xmm+//Dz06iA3lkhJ25RyDfaBAB/oSDyjQ0Mpnwcm04BHoOJzARHqYI4sXaKQ/UwZCTpQQAh0QBAox7PdZoECH+RYPI9CQbYsVjgLtWc50DwqBjgEChRiWLNBm7/dg+go05XNCoGOAQCGC/Ds5E4GG+qMKaBtdAc3/tERcWpLyKSHQMUCgEIEmUPdXtBmFH+ZrnFygm2ryfHQFtNeOmgjUlmLqBFOCQCEYY8v1RQm0/HcSgSZ9RsUzT7FBchgIFKCN+jsZIFD9/JSZSXGKRJw5S0QPaGxREag1xdQJpgSBQiD1FxKB6kgCjSpr2ic0WK2/HQQK0EaQQCV3npFAI8uKQO0ppk4wJQgUAokV6CBf51MS6HbrN3DTNWUhEQh0DBAoBLJogXr605qmv0AdHyJQe4qpE0wJAoVAwgQqzXgaYnbPZAK1JOop0HpYxzwFgdpTTJ1gShAohGFzhJ9A47/Prjqb12DNWAKV/dmqfCFQ/RwEak8xdYIpQaAQhkUSrd9T6XucWqB+U3QGEqiRqrdAM0WgTVKJdYdAxwCBQhgTCNShAs/JQokFui+r1AjUAQIFaCFUoAkMoahAuqtfcr0Eql9cNcBtcooWaO8ejo4bjQsCBWghRqBe57XeUb5roI6972oLIaJbuql+6snmoZRDBbrPEKhHiqkTTAkChTBMSXR8TZMI1FLx9Beo54kbSwxl+eJam0kFKhUOgTpSTJ1gShAoBKEJRTvkeUXELQ2B+qfla1CLQPeqQPf9BdoURhdoatsh0DFAoOCJMfcmvGvTfmbX9X0F6mtQq0C1zoNafVaB+vypGE+gqv1HA4ECWCj1IX8l0wm0ow9V/RHR3vU62bIHpyLKfRGsrs6wvvuRWgF131IR5l7+a4BAXSmmTjAlCBS82Juh0WKqgo6UPS6SBRocpM3nbMsYki7QrSxQ1aAItAKBAhhU2tKOyT/8UtFfZNEC9b6pbx7NKaBqXVcWaKYLtNjOOFig2dACTZyiDwgUwMD2XewlUHm4pTUFqaOg0kxEzaqfQCvfbaUt447ClLeA3/oKtDGw0u85yIAPAh0BBAo+pBLovhyMUgXamoQs3dIzPQXqWGzk8mfdX5D7s6l0GgLV7+InUOkwAnWmmDrBlCBQ8CGNQLO6IyBaoNrFAfctcW8Y5yXQ+qOix1MyqE2gjg7f+l8E6p1i6gRTgkDBh0QCFdVItTfUkoTZXdpHoMdrNhuxYfHGpkunQOt7dwpUU6I1mw6BDjLgg0BHAIGCDwkFWo8DSYlYBSqfUL9IIFDXvsUeAm1a7cULTag+AnX2eSLQlhRTJ5gSBAoe2L+K6ih1QGJ7ff23mYYpUHE0UAyFMnOBNu8sArW061WB5o5UBbpPK1D/EnmCQEcAgYIHSQUqt2CDBRp+w6baWb7LIgSalY7MK6HiTbYXBjW7QDsEatQ4EWhLiqkTTAkCBQ/SClS6yiVQZYp5PypfbtwH6oP2LFaUAq2a7V4Ctf5ZaD5GoL4ppk4wJQgU2rBVA5sPhxRor9QlSjPKfiwqoXvVmJ3+bAQq2vL7fd2mL9bBm8u0bKUSrxCod4qpE0wJAgUTuaKkHrCcFvk1VS42vuupBSqnUwtUk2pz70y/IpOGjTwFKlKQj6q9qsapiUGgI4BAwaTx5r5NYzE9kurF0qiK8qKpv/WVQG1GOZ1iVGljNOtFBmx3VucsVQLdqwLV720MebkFOgQIdAQQKJhIFc9q3pHjtCyVQDNhrX0tz7QCVaugx6PH9zaB7qXppnI6FoHWnaBbNZKdRKtA48oTwDkI9P3FavXgXeo7BoBAwUSug+33tspVJn0ee4/MNEo19KLcPi75mnCBZlUPZYtAlelMW7dAtYRGFtqiBfrh8Td/z7LdKmf9S+pb+oNAwUAs+Kkrhc7zsnQCFbVORaCpukDle+2Ltvu+Nmjzj3SW8VfDKVAzjogEAk2RouXY0ZxHgX65KASav5wKBAoG+nJL93lZDyvoftzrxh5IoPtSoFUVtOoJNSqqWvG10Ev1u3p9Z8vfmL1SnjFZsEBzcx6tWWj08GK1epj6nt4gUDDw02fWU3HGxUaVN8X6RrdAixeZ+J96UksXaKBAm08RaGSK5qGjOe98znJ13s2y6+LfiUCgYJBMoI7IcR0XywNL6QVaVDw3zSuXQFVkgWaGQLuymaQ3N5hJ/DmKQI/mzPs983ro8yz789GEbXgECgp7sfOk38kdAm0xaHf1NUUVSheo6PrMRF3UQ6DbFoG6B9kEllH9xTKGQCtl7srxIwQKJ0Mzh2cEgXaZZxiByun7CXSr+lMNw7T1qSd7SHYpjCjQy3L4CIHCqbAfW6DBOQylS6CZIlB7hlR9GgL1yQYC7ZGicaRUZtUFmrfk73xOfVNfEChICHf6fd09BKpF7WjtFU2GY4lR8698pKdAPcV4Lv4cqw909bzuAs0rogwiwVi0VoUC++qq051WlCLJNeE4/bMaTXMX6XZOgUqnBwv0bCqW3ow1Cn/77X8rWvCHv61Kj04DAj03OgUalta+icphC/K+qat3mzoq0rQCVQsoqqB1wBHXEJLzPQLVGUWgxzZ8wcPy1XQVUAR6drT2xsUJNHPIURZrI9DhDbqJE6jzyegCVVJAoCrjrEQq1yDd+VwI9PvJekAR6Nmxb9v/MdQGhT4sAhW2zOofG0mggzvULlBL/4QuUEd6rQKNz+YyGWkt/OHDkx/fHn/++X8+eJv6hiEg0DOjtZczRgfNHpfSthnq+shmxaT8cjgiBNr6WFoECjqEs4MF074mJplA1ZpmvY9bZosPnx55XqcmUK2AfgLFnyEgUFgwyQUqGVEZTNoo1cBTF2hr1zACDQGBwnIxp/KYn4ZhCNTSQpca9K4Be8vZ0ZZV+1yb45bu3+Z5INBEjCXQ33960vAjE+lhDNrjAvkI1D7S3qyItImvEajaqHfcYCMb0Bfp5PpyJUxdZnWkVCFHoGkYcxRewFJOGIUUAt1o7+t/657Plkv9BCrp2BfrtsWhAnUljkBDGC0eKAKFsakl4WivRghUWmDUOcCuOtF1ZoxAlblRcheskoRDoJ2lRqAhjLUSaXX/50+CP1Lf0xsEek7IArVoI16gTfu99VIPgdbaM/TXnil1DoBToPqFCDQ5Y62Fn3D1kQwCPSckVwQKVBtRdxyfUqBZnEA7lxLpseygnZGiMU25kZwMAj0jbIE0XJ9raHM6peOZdLzDeEZPpfUcSZ4eBjUnR9VHLAI1L+8S6BZ/BjJiPNBTAIGeEekFqgix03YeAhUq9J01KlU0tbOD6rAusGcoIzXhESiMTj+BbtQX1Tvby7ZUOs63C7Rj1qjWeJfSQqCjM9Yg0nQR7BQQ6BmhCNI+ouJCEmioNdVU5DfWM+S7+QlUrh0nFij+DGascHYnUgVFoGdEvECVdnIjt1A/2btPzTMiBaq+QaCTMNpE+vXTT6nvFAECPSMSC7Snn2wXa/0E3QJVJjCZvawIdHRGGkRiIj2MzmIF6vysp0DxZzgIFJZKP4E2/9QzLQcTqHCmuJMjhc7WfY/8ZQg0hlEE+sM9lfsIFAbHGky49YgAgYInhLODhWIPhtlyoEJpUKcTqOVqeTRIHHB7sMOQCHQKECgslEiBNvW8Wp6nI9CuGyDQ0RlFoK9vv0p9l0gQ6PkQLVDplTyFySVQ38WPCHSJjLQSKf1a+K+/X70Nj8uMQM8Ba8RLe3R2k1CBei8fbxVo8xOBzoqZrYX/+EOR0uFNGWE0uGaLQM+BvW0rJE+B2iZWbtqC1x2tEylQu1GnEyj+jGBWa+EPL8spUHl8vIrATeYR6MnTHXHNMwVDoF3D8gWTClTcyet68wQEOjpjrYVPEQ+08OZRoMXP9ZMnT/JqaFjCCPTU2XvErPRIIrNVOT0EKjuoUVlb9E9JoO0G0i93zGtCoLNinFH49xer2z/3Xsp5ffTlP38ufz7MDxz+tgrsXUWgp45X0PSuFByJdMysz1EcpMZksvspt04j0DYFIdAlMkoT/qcnf0mxEumy8uZlU++8DKyCItBT52wEak3NEli+/YKgE5yUA2EINIIZLeWsA9vLAe6/XKzuhPSCItBTZ8YC7RqOV69PL9B4thWD3WC5zGgpZz2YLw/qhw7wI9BTp7dA6wScAm3d69gu0MxHoJ0K8hOo66MBBFpkt6574s8oZrQSqZalPKiPQJeGT+WxMwHHUL78Uf6PRYmhAq0cVFU/ZyXQSvhUPXsxI4Hmg+9FYPvLpgl/vaIJvyisc+Az6xaT7Qk4d4JvBGoLztEqUEuKdeWzMakbL4G6Puo9S96gyHSpfQQazYwEms+GKqqbXy7qkaPcqQ9DkkCgJ05fge67BNr0kG5sQ976u43tsERigTo/6h8pxMCz3gytzEmg+WDU7XdZYdJyGtNrpjEtjP4CbTu9mmNa/KiHazZapTNT3rVbq279Di7Q9Pps1A99GGkak8qP4YvYC67zmfP3f/706W9Hkz799eXFKrACikBPnVaBdku0PqNFoNUPEbOuh0BF76Ek0hZ6CbQt4Qjo+EzEjKYxZUXjXSPMnwj01OkQaItB90XjvFOg9Y9mgpK2elOmXaCNg2YmUOYspWNeAhVRRCoIJrIwnFOMvATafG45MXeQlIAQqL78Xb2mRVySgxIL1GvZfDzoMyGj9IF+/VTz68vV+tmnP/qk//XXJ8W80vs//kw4u6URI9Cm27O1ia/NELJb02e1UI0koaYp33J+KoF63asN7JmQ0QeRjq3wZ6lv6Q8CPW2aJrjxQYtAHc1+lVqglnH15nVITS9YoPocKc8TtQNV9bFHLRKBJmT8UfjdANGVvUGgJ427CV71cPYT6EaZ2Sl/ZL7qZhqB9p/+jj9TMr5Am1mcE4BAT5pWgbra6H4CrezpEKilYd+F7CG/eHbxAlX8mdVz3yNNiEBTMr5AE8anDweBnjTDC1QePJI/7Jowb2Lz0BgClWed+rtQri37XgMeTFIDTSfQdhvrc55yUt0Z0tM4sFuge/kj6yUqmiIdo0XeArXLaxyByt2gnjZUZgz4XQJeTNEHGrZ8vRUEuhC0GPKdAlWmLHlMstcb6Q5FeQrUpS4vgXrcqlugfjeUMhZ8CXgxskAP+SKihH2gRGNaBKUb5fqlVaBZpECV5Ub2eB3uKB42XBLyFGjnvbwFqvXEtuRr6znQBWFMMZE+5Sj817BJpQj0JKmG2N0CrVYZKX2kzZzRGQl0Y0xIdZzoeG8KVJkL0JIvv8n+EMgEAl0zDxRUzEmemg81ge7DBSq9af7NOo66cEqoayZ9MxGg/VauOfemA5twSu6BebnuiT/TMnpE+vtPe61D6gkCPUlsK4/0t6pAszCB6m8cEy29u0DDPymT34iZAH0Eqt1SjCk57i8qpj3mPoGDOYWzSwACPUlaBVrpUbakIdB9m0AtNppGoPnntTyTCbSZWu+6vxzzBIEmZoYCPXz6/erq6rdPMUP5CHQqWkfJOwS6l2TZ/JSOta+DPymBbrPUAq3SdfdwqkFPEGhSRokH+vvVb5Ltfn/zNH4a08eXUm/qg7fBmUOgE9ERSanliClQZeJnHeHTnbplzmcvgbY4qGuku6wrZhvX3u9qdsx3bQJ1nmBZcwqpGGkQSZpr1Gcl0s1jbVbn7cABfQQ6FekFqnq0hSkE2lZTLNrxMQL1qD9aO0k7roEezEqgRUT61b0qrv23xZD+87DMIdBpaI8110Ognf40Ynpa7eUxMi7oFKhTdNV8zDiBerW/EejIDCzQf+Sm+8vFav2d2M/jcXRA5Xw61FoOofzhIjQtBDoR/QQqRZqXPvQSqLkbW1+BtglJTNNUT9KCjQQKtPFneO7o9RyYgQVq7sGxil+JtDN0mSuVXTnnQEqBWt84sG/9PrRA9ZP0Hspt1yabVoH6ZM4mUK/rII6hm/CXFn/ejquAin3hJdgXfh60zzOyfaau2uwhUMshu1WdAt0qewi1CskU6Fa+WhwdUaBeV0EsQwv0cHV19euxCf/zleBTZMK2zlPWws8AY6W7eULbMVWgLpvasWrKaq9yaMk1zVIyqJ9ApVb7VjTpm0s7t3mXPy5e+4cNaXsLqRl/ECkaBHry2G3WT6DKMk89JFOHQB2ash2tBOoeg4kWqPZBnbFRBIo/h2aCeaCxHJvwRhgSmvAnhTPisd109elhAlXP6RCoV7brU20CNZrunQJVZ7Q7llGGCtTbhAh0XOa0EunSsGXeLRo0IoVAh8QZMr7513p+y1VjCjRvwbvHYPoLVL5yUIHKS488L4NIxhPo16u8HnroEUokH9K/8046cPMiNDYeAh2SGIE6+zFVgdrv0LGTcbBALaPnhovCBCr7N1ygYmgrQITbbebXXwspGEug7/Np79/8Pfvz0e131hN82BVT55+UA1K/ljPpg2YxIdDBaOnodDbUqzgg3QJV7uJ+axAk0K3Z1yi/6SlQbXWSr0A3CPS0GUmgr4v5S4VA+8RTfq9PKw2NLYpAhyJSoFnXVVMK1CrTLoGq57kF2u42IdAyflOQQD1nDEAKxhFoXnW8/T8ujgLNey17bIl0eCMrdB0clQSBDkVLa9wlUNG0DxKo5aYuAvxpClSfDW9UKW0Y8nJ2R3a4TRVoiAgR6KiMItC88/LZsfKZzziyTYcP4vDx6s2TJ0+eXr2N8DACHQr3gLrVhMolrtlP5mX6qekF2ohSW8PjLVD5/Jaz2xPqJVDPzEICRhHoZTFWXgo0n3mUblO5UBDoUAwlUKPKmbW9l+hcb+44fSshn+ArUOX8fgLdVAIN8qAkUPw5PKPMAy0ncFYCPVZH021rHAoCHYp4gTotaOkTCBJo10CNcXrxwibP8rj8w0EygVbzUvOu0mCBZnVNGIEOz4grkSqBJlqXFAcCHQinJb0E2pJml0CdOaoE6iuRTt2Gtop7CDS3Xy3Q7vEmRwoIdBQQKKQgQqAdYUC8BGqnmvyzKXoPfSyyLeIjdZwT2q24bd+AqCW9SqDbeIF23x7SQBMeUqCsvLR/FDT+I64IEGilwFo7WeXPbouUMY672vuh/Yq+AjXPETGXxRZ0ESDQURhrEOmhEOiOQaQFEirQrhmc9RX+TXYxOb1UZzUnycsivprNglrF0QItLizt2Uug+HMERhHodTWHPhfo8XW/aUy9QKCDsA8RaNkw92mLSwL1kYEsUGlKUntn41Zdu9PCmALNtk31E4GeMqMINJ/7uX6VC/Twt1WvifR9QaBDIMeYcw4VZfVM+3oBp2fC5atWG2zEpJ/ynXCpj0C3vo3dcIF2jdg7TiqlLvdERIFAx2CclUj51hvN+qH4pZy9QaADYMTo1D5VzlNCIvukXL7qEqhU7WyavXWvpfPasu7p6ZmxBFodqP8qINCTZqS18HkdtN7QIz6YSH8QaGIMHbYItDattz+lU7sFupEFWl9UX2u/uFaYX14iBOqTnn7WFoHOidHC2d28zIMnrR+8TX2/IBBoYozqZJtAY5Ivf7bW5uoGfOYQqFN7YYZJPrNS2uxDOVi+UPslopLvlTvwYk4BlROAQBPjHjNynxFBt0CbV+KtdIn96hMSqBn/o7dAYQwmEejvzANdCC3z5ltOCcW+trJGMkyYQANtOIRARS5sAi3/RaAnzQQCvXnJSqSlMIZArS1dCU2gW7FyR77EvuAnMB+DNIvVkS79Bgj0xBleoF/f3Lt372mzk8f7C5ZyLgVn9E9l5KjnTRqzWPUld3mW6x+NylyGQGEgBt8X/nU1d+mv1fuXZWT6iUCgSWkRqHtifSiyQE1/CcFU6x+l8JnpBTrIuEwtZqugEeiJM7RAL8X0pWLzomJPjlqmE4BAkzKiQKX1Goh1cwAAIABJREFUQrJUNnKP51aNP5xcoMNMDGoVaOfmSTAtAwv0uth44yrfiCOvdr6eeiIoAk2JeyuOoQSqzvis9VIPxtQryDNLc9i+4CcwI0MLtK2GDSfJwAK9rNrrN4/yKujraaufGQJNy8gC3dYCbTo+RRB5sYK82cRStVECgQ40NV2eyoRA58awAm02QNqtVnfeT70OCYGmw70is1zrPpRAy2PKzyZ6cL2CfDCBhl7hmao2lUkGgZ42wwq02cT4y8Vq/e1q9c/TxREpQKCpcK9oH1ugWzn8+qACHQYEOmcGF2g14l6EE1lPF8euAoGmwi3G8QUqt35dAjV9eToCbcsJAj1txhTolGGYKhBoKkYTaDOrsxhmL9+I4PNZtEBPxZ8IdNaMKdCHqW8VDgJNhadAk1VA/QWazU+gLZ8i0NNmRIGeQAUUgaaiTYx7KZL8SALVLWSZU4lAYQBGFOh0648aEGgiphBoFiTQ1j7PoSbFx9CeEfx52iBQiMFToD38aV3R3iJQ/eJOgUbnDECAQCGGMQRqWZCpClTeuMO42DzaHMKekAgEChG0irHZzr2fPxuB6rOX5MifVhkiUBiH4SfS/3yV8+tF/erIbwRUnjmdZkwtUKnJ3rxqFaj1qPoToC+DC9QG4ezmjp9A+/WANhFBNo1Aa/UhUDgJEChE0K3Gph0fhY9A3V2g7kQDrwBoZ+BgIr9f2aAJP3dGFWgjyyQCZQAe0sGunBCOhxn7CHQrTYQvAiwlFmhcrgBMECiE4yfQaH9upf0qqwAidRjQuvoYL1D8CQlBoBDG3k+NPQVa/swUgW5KgVZh69rGkJwJB14A0AEChTDckZS102IFKgwnCzQrfJlAoPgTUoJAIQxvgcZXQOUXW3nuZ0+BWld4AvQAgUIYnlXLaIFq64USCxR/QlIQKITh6cVYgW7dAq1a8GIUCYHC5CBQCGNwgSovt7JA5TB09eR6BApTgkAhjPEEmktS9WcCgcbkCcAFAoUw/AUalbwm0E2HQMOMiEAhMQgUgvD1YgKBFvXPjfZptYVxsQF88KwkBAqJQaAQxLgCNSPNb8u5SIVBg2cl4U9IzHgC/VoEETn8kfp+QSDQvownUJsgq6nwsQIFSMxYAn3/bRnG7s9Ht9+lvmMACLQvAwtUrYBaBVkdzVv3jKrDxIwk0Nd1HNCJtzdGoH3xF2h42oowKz/aBFocRKBwAowj0N3Rnrf/x8VRoIcXq9WdycKBItDe9N+n2MlWEWY+fNQlUFrwMDGjCPTLxWr17Fj5zCPR5wZ9nvqe3iDQvgwn0K0pUOuwuRDoUBkB8GYUgV6uVnezSqDZdfFmIhBoTwatgCrCdE7zpNkOp8MYAj1WOvN+z0qgx+rodG14BNqHfrt0dGETqP08BAqnwhgCrfaErwQ66Q7xCLQHnqGUI9GjHSNQmAEIFDzxDAQai67FFoEOlgeAQGjCgx9l/fMEBApwOow1iPRQCHTHINIc2ffcp7gLo16JQGEGjCLQ62oOfS7Q42umMc2QAd1ZQAUU5sgoAs3nfq5f5QI9/G3FRPpZMrBAqYDCLBlnJdKfj1YNLOWcIwgUwGSktfB5HbSCYCKzZFiBmiPrCBTmwGjh7G5e5vGY1g/epr5fEAg0lkEFapnaiUBhDhBQGXwYuwKKQGEWjDIP9P+ebtRIA4FGMpxAHUGVECjMgZFWIt1+dRoORaCRDCnQDQKFuTKSQI/cn7b3swSBRjKSQJtdOBEozIFR+kA/PC7nLz2YcgC+AIFGMphAN4ZAN+WLge4HkJKxpjG9+bZ06NNpm/IINJJBBJpb8vj/YvMjcQSBwowYcVfONxflPNApu0MRaBQDBRHZlL5UBVq6E4HCLBh1GtPNy9KhD4jGNCuGCmNXNdgbgTbuRKAwC8aeB/rxZbk750Qg0BgG6gAtKp+mQJtqKMCpM7JADx9+QKCzY0iBli8QKMyTUQVa2HPSkSQEGsFw/tRfVS+EWQFOnPEEWjTe8w7QKeeDItAIRhNo8xN/wjwYSaD18NHtV6lvFwYCDWeoKaAIFObPKGvhqwlMU08CzRBoDAgUwMVoSzlPYBlShkAjGHANkv5K6gtFoDALRhLo/Ymb7jUItJNqzqeY+olAAZyM0oT/bfKmew0C7WJfbb9ZC3TYOHZlLOVtM/pef4RAYRYQUBlkyt3fs2YP46EDgRYgUJgp8xXo4fer8JotAm2jsqYs0IEroPkSpEKg6vpN/AkzYViB/vmo3BB+pZJkJVKZdmjmEKidsua5r6TZVD5HEGhWCpTJ8zBDECjk7GuqN+UPBArQysAC/eHe/b/n/6rcjxPo108yH48CfXv8+UdQ5hConb0ccWkIgRp2lPdCQqAwU2bUB2pUZCOqswjUgSLKZgZTugqoMS6kCpTZ8zBLECjkWE05mkCrExAozI1R5oGq4+W/v4lc0vn+YrVaP6n5y8Vq/d3x548hiSFQOw5RphOo2ULXN+NEoDBDRlqJJFUTowZ/Sm5erFa36xWhDCIlxCnQVDfoFiiTP2GGzEqgWfaPY7Xzrz3SQaB2Kw432F5RR5+XDyBQmD0DC/QfcmO75HGvaUw3x8vvFJVQBBqJrV0+tECrefIb9Ygu0GHzAJCegQX65cI27nO3R/KHv61W62cZAo1mMoEqBjUFCjA/hm7CX1r8ebvfPPovj4t9PRFoJBaBjtGCL3+IoSIECktgaIEerq6ufj024X++Enzqe4fD62Ml9BUCjWQCgcpRQhAoLIjxB5FSkE9o+u4CgUZhzO7cjydQ8aZZyAkwYyaYB5qCfEJTzGAUAjUFuk85X96OXaD4E2bPjFYiqfzjAoHGYRPowLdEoLBQJhHopxT10ZufwhYhFSBQQ5iD2zNDoLBYRhLo4VcxD/Tet6l7RANAoHqMpeGrn5kh0CoEPQKF2TOOQK/V6aAIdEJUgY7iTwQKS2UUgerT6R9MtskcAm126hh4yyMZXaDF/xEozJ9RBLrLpfnro9X6v755vFqtn6e7WfsMKdsqqHT3nim1QPfDBpyXURdpVgLdIlCYP6NMY3qxWj0sFiU9L2R6J10FFIEGI3btqCU6PIZAi0hMWwQKs2ekifTrXwp1Pixtmq4KGjpHH4E2Ah1j/lKJKtBqD078CQtgxJVI12UUket+wUQ0vrInUiADDiC5nGgVKMACGFGgXy6KxvvxXcI2fCBnLdD9wMNGzlY5AoWlMlIfaC7QypzpV8YHcOYCHXTYaOscF1JnzSNQWA6jjMJfFn2gjUcR6CQMLlBXiGS1y3OLP2ExjDWNKe/2LIfhr/sOwx8+/X51dfVb1HrQcxfokIGXbAKVQ9dt69MQKCyGUQSab0h8lOZRnd+8/fdHvQaRPr6UJ+S/Dc4cAh1KoIUgbQKtx9wRKCyPkZZyFss3Dy9K7+Xt+TjyHZHU4PaBSZ2zQAeeuOQS6AaBwnIZKZjIh8dF92fhv2JHoyjKJfX3qqgk3xaJhc0pPXOBDjhzvvSjVaDlcVmgA+UBYGxGDmf34cmTp0ETN2XynoD1Kzm14JigCHRYgaoGFQLdKgIdKAcA4zOngMo7Q5e5Uh+GJIFAh0q9RaBl8912AsDMmZFAbYtAQ4f0z12gw2Hx41Gfxf+U1j0ChSUxI4HaJpCyFt6bgde9twlUPgOBwpIYVqB5E9tC3ER6BNqLUSqgCBTOixkJ9NiENyZA0YT3ZjqByqfgT1gUAwv0h3s27sct5bw0bJl3iwbNykegA4FA4SyZUR9osTPInXfSgXx3+LBZ+Qh0IJwCbSZ9IlBYHnMSaLE1yGr95OernF/LmfRBs5gQaFrE+iIp1lL9qnAnAoVlMyuBZu+13emCVzWdr0AHqYC6BLopyZp4Ipkt2AjA3JmXQLPDG1mh66ehEZkQaFLqBUaSF7dbSZ8IFBbOKAGVf3qi8mOfcHaHj1dvjmk8vXobkQoCTUol0K0u0OYMOXAIG3HC4hhpS48U05hSgEBTUtUplY081FghW1Wg+BMWBgI9E4YSqK7FFoGyEScsjlH6QL9+qvn15Wr9LGwjzaQg0JTUAlWOKcHqECgsm9EHkb5crKLjgfbnbAU6mD9bBarF/sSfsDTGH4Xf9YhI3xsEmg57fVITaPK7ApwS4wv0WAXtsSdSTxBoMlztcQQKZ8T4AmVb4wkYz5+ZOm8JYNFMUgNFoGMzhEAdHyBQOCOm6APtuS98H85UoIP0gDo+QKBwRows0MOnv6167Qvfk/MU6ABbybndiEDhjJhiIj2j8OMyxFacCBQgm0Sg8fvC9+ccBTqWP+vwS9vWswCWxCgClePS34/fFz4B5ynQ9Gk6BCq2QGL/IzgPZhbOri8INA3dAiV6MpwDCHTpDBXHziBvwecORaBwPiDQRbPfD9EDalVjHYB+Uwa4I3oynAMIdNGM508ECufISAI9fPgpVUT6XpyfQAdJ1inQDIHCWTGOQLXN4FjKORZjCVRsgpT/2IqdPga5OcDpMIpAr4lIPxFjCrR+gUDhfBhFoJdHaT74TYSlJyL9WAzkT5tApRe1PBEoLJ6xViI9TH2bOBBoCkwzKoHn61MQKCyekQQ6XaNd5YwEmo+/j9eCt52CQGHxjLIv/AsEOj77oeaA+lRA2QMezoOR+kAnDMCksCyBtvoRgQIMzigCPbbhpwsBqrA0gbYIcrAWvI8/ESicB+PMA/1ysfp+ssnzMucl0EGwbIZkEWg1lx5g2Yy0Eunm8Wp1qwlpxzzQJLQJdCh/OpfBG6chUFg+o9VAmUifkMqObZ2cQ+3D6elPBApnwSgC1fyJQPtSiXNMgW63zgXuCBTOlrFWIq2ffmIlUjImEWglUeMTqz8RKJwFY61Eep76NnEsR6D79nH25C34qv0eItDEOQA4PViJNEeEQJ2iHKICasfuTwQKZwErkWZIUfXcI1CAqRmlD3RHEz4pUvvdIcq0/rT3fZY4/IlA4SwYRaDHKuidk5hHvyCBSs147bN9lkygVZTPVn8iUDhjxpkHejTo7bepbxTDmQg0VQW0ipPc4kKXPxEonAWjDCL9cO9eMf+TlUhJENPoM7tA0y2CL3fq2DotiUDhzBlrGhMT6dMh69Eq0GQ9oEc9lgJ1GhSBwlmDQOdHm0DLBnxCgR7/HynQRHkAOGHYF35+dAs01Z1KgW5iBApwDiDQ+aEIUrNl0vlLYqdiBApgBYHOj9EF2qJJBApnDQKdHy0CTTuBvp4F2uJJBApnzShLOX96ovLjZLPqlyDQNmUOINBiNAiBAthgFH52WJQpDo0q0HKIKeUNAWYGAp0dVoHubZ+Fosw8OoqzU6BtvaMAZ8AofaBfRSjlX1+u1s8IqNwLU6D7NAJVlrwfXzddoE6B4k84b0YfRPpysXqW+pb+LFGg8tqjaIFuZaoD0jp4mynbJ4gCnAPjj8LvVutfUt/Tm4UKNEsj0Gbno2bovaqUWlSJQAHGF+ixCno39T29mb9A9XWaSvi6+Ba8vPLy+HqrC9TSiEegAOMLdNINPmYvUFekkHqXuchklZXrhUCzYhW89InuymIECYHCeTNJDRSBxuKME5JSoHUkpVygzQcIFMBgij7QCcPTz1+grR/EClQLnVRUPYsf8ri8KsviHQKFM2dkgR4+/W21og80mmiBtpvOEGhpRzWoJwIF0JliIj2j8NH0EGiL6vTYnUKg+mH9NQKFM2cCga6ZBxpNu0BbWvBJBSqG3xEonDlj7YkkuP90unVICxZovVe8i7bxHiN4fHlyu0DrF63ZBVg4hLObFR0CdV7XumrdrIA64oTUR2STtuUWYOkg0DnRNsreuhNSW+AkSwXUMUneIlD3LQHOAAQ6J4YQqLl9Zi1QayoZ2gQQjBONqX7xetIO0GzRAm1DGRTaasuOjO0zu6InI1CAihEE+v6iXnmUD8d/P9kk+hwEKqbJVwT4U9okCQByBhfo4UUz8fPLxWq1uv0u9R0DQKDFyI8c9tN+skc6ADC0QHN/NjPnb15OGo9+3gLduwKJdGMIVGgTgQL0YGiBXh6N+c9Sqz2vhE63kvNMBaq0vLeyQC3+RKAA3gws0NyXz5WPr1nKGUnPCqgsUCHOQIG2zycFODsGFujOrG8e66QPU9/Tm3kLNPbKRqB1DDqxbYfzbGdKCBRAMKxA8x7Q59rn14SziyONQKsZnvL2R9aznSkhUADBsAK1RZ8noHIk0QKVFhBpAm0725UUAgUQjC9QtvSIJKlAu892fYhAAQQIdDYkEKhzkablbNeHCBRAMHgfqDHkfmzC0wcaQ78x+KwU6LZTgQgUwJuBR+EtQ+6WgfnxmLFAe1dAS4FuOxSJQAH8GVig5pB7PjDPNKYI0gm005Gtn+JPAMHAAs3Dh6i63DGRPo4ogSph7MQSpNa1Ru2CRKAAEkMv5Tz6UjHobtJNOc9QoBtFoPUL18mdO70jUACJUYKJ3H5VNuMP779dTTmN/uwEugkXaHeK4dkAWCqjhLPLAzLdu3fvonh1e8JgTGcm0I0i0G3XThw+bkSgABLDB1Q+vFb2NP5nAirHESXQTKpUNguPEChAGsbY0uPr64tKn7ee9tTn4c0P97771yaR0Fn5JydQfx8hUICTY6RN5Q4fr65++9Q77X+UJl4LDy9AoL5CChdoFb1TbIWkfuA43ydNACiZ1a6cO9ETUA9EnY9A4yqgyQUKABJzEmgenfn2q0+f8h6BaigKgbYlrdygXaAsMQKIYE4C3dU1z5vHtUERaFvSyg26BErvJkAwMxKoFJ05f1m4FIG2pKzeAIECJGdGApVlmRv0brYMgbq9JW+CFCrQjRBodUAOn2zeE4ECRDBTgdaL7BGoO131gBJ+HoECJGGuAs1HlNa/zF6g1diNQ17yPpzBAtUOqPt3GB8jUIAIZiRQbYe669Xqm3fLEKjLXuMJlEF4gBhmJFA9FPPx7Tf/72wFKnbKVBesK2ccpSm8ObhAASCYOQk0nwf64I/m/WUxp362Ai2nuVe9oPaB8Uag4WNI2gFtC07tcwQKEMOcBFqsRJJ9+XoJAq3f2s7YC3P2EWihTgQKkJ5ZCTR7r+0pf3w/F4EaxhpLoNutbQ946X6OCjAAdDIvgWaHDz8q8ZwOry9mI9CN9lYRqH1mUQKBbu0CVe7MADxAHDMTaF8mE6gmqXrYaHCBmuY07odAAWJBoONgClSbOqS8rOMoRQv0mEChTqc/lY0+EChAHAh0FPSJSqVA94UimyPipRSIro9At/rQkZaDJmsIFCAGBDoK+kBNPscz9+TeLlBpeVKsQAt7uv3ZxGpyL4QCgA5mLtD2lUgrCyNmTkIIVIT4KAWa2QzaLE/K35VnxAi0pQHfRFtmDB4gHgQ6CpJAq5pfIdDMV6BB/iwudqtTzxIAxLJogZqcnEAbNaoD8s3QTrEgPlCgGwQKMAYzF2j29dMf3Sc1TClQuVrZ9H56CXQ/jEDxJ0A/5i7QQE5YoOqqpN4C9ckSAgXoBwIdA2nIu1Zph0CLWaBVGx+BApwoCHQMWgRqacPrAlVD0/vczMeMTJ8H6M0MBXr49PvV1dVvnz53n2owqUALGQYLtDwnSKBt05ek0xAoQE/mJtCPL6UpSQ/ehl4+uUD3boGKs6pT9nEC3ZZzQAFgeOYl0HxDeIXbv4QlMAeBNmNHkkC9b7XdeozAA0ASZiXQ64tcmveelHybv1k/775MYnSB1r2f5bsggcZN08wF2iO/ABDAnASab2W8fiUd+BAaT3kKgcrz1W0CNTpBewoUfwKMxpwEujN0We0O788kAt0MJlCzrU4FFGBEZiRQbVvjguvV6k7IaPwUAlX8ua9qpFKvplWgxcEOF4pA89KoOwIFGJEZCdS27v3k18Irk9rTClTs1LFFoADTgECHJUSg8oiTl0Crf6TAycefCBRgNGYk0GMTfq3PWppBE156UyzJLBcKJRRo5dDqGP4EGI8ZCTS7NGyZd4veDUlibIGqOivi0qUSaOXM7VYSaO5PBAowGnMS6JeLo0HfSQdujv40KqWtzEWg5TFPgYo3+BNgXOYk0Hwe09GYT36+yvm1nEkfNItpWoGWYUE2WiT6FoG2GbRptG/rt1sa8ADjMiuBZu8vtKWc62dhCZy0QPebTT3ryV+gzdstI0gAIzMvgWaHN7JC109DIzKdskD3e+HPboHq8UKqKU0IFGBMZibQI4ePV2+ePHny9OptRDy70xao+lq/XMEm0NYLACA98xNoLyYQqBo1xE+g9SGnD10B6xAowJgg0CEpVSnXKjsEWk4V7RSoK2Iy/gQYFQQ6IBuHQLN2ge49BOq6YYpsA4AnCHQ4alVaBCpHSNa3l5O2kEOgACcNAh2MZlvirPxZ/ugUaOYtUONjBAowKgh0KOpFQXtjYKhboE0a1qTrCqix7giBAowKAh0IIbe6RS4JVN0jThOsmog1bQQKcBog0IFQoihnStTP/VACxZ8A44JAB6KpgGaqQDPdlcECFUNI+tbuCBRgXBDoMMg7EsszOy0kEKj6AwBGAoEOQ4BAy1P2/QS6cZ8OAEOBQIdBFmhmt6Ogh0BFBLyN82wAGAwEOgjNaqP0Am1m0SNQgGlBoIPQrEGqBNp2ciVQVzI6CBTgVECgKVHXsAcJ1PpJu0CrDT6zSqD4E2BsEGhK9vVeRkKgxhQm61UIFGCWINCUCIFWb5xmrChdGCZQpQWPQAGmBIGmpOrKDBDoNkslUPwJMDoINCX7kmCBus6ySFEKxIRAASYGgaZE9mfL4Lqgj0A3qkDZER5gfBBoStQu0M7h9224QOU4IggUYGIQaEqCBVoIMUCgW0mgzchRIVMECjA6CDQhymbEKQRqGFRZBq8JtE/OASAGBJqQugIq5n62CzS3oSRQ20ZHLQLNECjA1CDQhAiB7oVA2043BGoatF2gGQIFmBQEmgR51w5JoC1syxGkSqDVEeMsTYvqHFDxE4ECTAMCTYK8bYe/QMufkkANg242W/Wi5gPpBQIFmAYEmoQWgTr2cK8Pdwp0K18jL4NvXjGNHmAaEGgS9iLyUq4yTaCNAm0vt1shUEO2W1mgsmANgQLABCDQJBQCLYffq23fHQKVdCheOAW61QTafIJAAU4BBJqEwphNWGNNoHIlsnkpXiBQgJmCQJOQG3NjFaiiRZtAC4MaZ1afHBOTTKtqs3mFQAGmAYEmIVegIlBlDElyoF2g5pnVEUmgx58bZey9eYVAAaYBgSah6AFtZBYoUMuZ1REvgeJPgIlAoElwCrTQX0+BbuuPESjAaYFAk1AKtLFZLdBmtnz1rlGpuLYRpFWgUhoIFOC0QKBJcAh0K8tRGSZyCFQ1aDVsJNQqBCopkzh2ANOBQINwLdCswtCbAq0+F3aMEaho3Neu3CBQgJMAgQbhiE9XVUAbmw0qUEWZCBRgOhBoEGkEqs749BJocVwIVDoHfwJMBwINwilQrW6oC1QR53a7tSyQV39UrxEowCmDQIPoEKh0IP9Xt2SgQItx9+pVi0BjywIAfUGgIbh2LzIEWqJZUsjTGqKpQ6D5D2mtEwCcAAg0BKdA7U6zCDQLFmg5PaqsgGYIFOCUQKAhJBCo8YlcMTWuqWLNi5onAgU4JRBoCLpA67ed/lRWIVlOQ6AAcwSBBiCH+awO7KtQyrbTPQVaji0hUID5gUADcAm0DEVvEChQ4yIECnDiINAAaoGKhny9i5xVoHpgEJc/1Xn1WkfpZoNAAU4WBBqAXaCbchtOg34CrQ4iUIATBoF602y8WY8lydsYm+gCdSZsm1Zf94oKgW4QKMDJgUC9qEeLGoHK+8BbL2kxpnGmPqspQ6AAcwCBeiD0KQSaTSRQtkACOCUQqAdSE12IU1RHXTrrJ1ApfggCBThVEKgHMQL196dLoAWSQEXzHYECnAgI1ANNoEoz3tSZJbBnOwgUYKYgUA/kUXap/9MpUHN7uFbUGU4IFGA2IFAP2gRq2iyFQMWRWqByKDsECnAiIFAPggS6TS/Q0poIFODUQKAeeAt0Ww6ea7HruugQaFYLNMsQKMBJgUA9aBGoKjMRbz7EnwgUYK4gUA8GF6iRhjiCQAFOGATqgSrQ6l35whSo/DMGBAowGxCoBy6BGi6TI4HEZVBHEmj1HoECnAwI1INggbYFrwujCWZXv0egACcDAvXAKVBdZZJAY+5jAYECnDAI1ANfgSbTZgMCBThhEGg3SrxkBAoANQi0G0mg2620nccUAhVRlQFgehBoN4pAt5JAnV2g6bAIFH8CnAoItJtGoFtFoO4xpHQgUIATBoF2YxdoZnZGIlCA8wKBdiOUWSzRbAQ6gj8RKMApg0C70QRaT5M3TDacQNUDCBTgRECg3eyrdUW5uapYSduR/GmOuCNQgNMBgXazr2Is5epqgi0ZU5gGEagBAgU4HRBoN/syQFIh0KwOmby1x2EaHAQKcDog0G72pTFrgVateCMU/TggUIDTAYF2I+2QKYX81ATaP29+IFCA02GGAj18+v3q6uq3T58jru0j0I0iUL0FH5FuFAgU4HSYm0A/vlw1PHgbenk/gWbFKJJ4Z54yAggU4HSYl0BvHq9Ubv8SlsAQAg3cg7MnCBTgdJiVQK8vcmnee1Lybf5m/TwohZjiNl2gWTWPqXwnR59HoADnyJwE+uejozBfSQc+HIX6zd9DkughUC0SZynQelo9AgU4R+Yk0J2hy1ypD0OSCC3ufu8Q6NGf29qdo80Bre6MQAFOhBkJ9PBitdIb7Ner1Z2Q0fhwge47BLpFoABny4wEeqxuGu1127E2IgRahA/JKnkKeeUCreufI06jzxAowAmBQFvZb50CrWaE1i350UCgACfDjAR6bMKv9VlLAzfhN0VFs36dqQJtQKAA58mMBJpdGrbMu0XvhiQRVtx8xHtTVUARKADozEmgXy6OBn0nHbg5+tOolLYSVNzcnpvN3kegIXnoCQIFOBnmJNB8HtPRmE9+vsr5tZxJHzSLKVSg270h0I3pIDNzAAALEUlEQVT0bhIQKMDJMCuBZu8vtKWc62dhCQQKNN94s959s/RWrS8ECgAzE2h2eCMrdP00NCJTjEArZ6nmRKAAMDeBHjl8vHrz5MmTp1dvI+LZhRR3Wwo003Z2U/tCxweBApwM8xNoLxAoAKQDgTrZioY7AgUAGwjUxVYR6AaBAoAOAnWwRaAA0MHMBdq+Fn5lwTflbT4H9DQFOtmtAUAFgTrY709UoABwMixaoCaB80AbXSJQADCYuUCzr5/+CDndu7i1PBEoADiZu0AD8S9uNXMJgQKAEwTqoOr1bATafIA/AaAAgTrQBCp/gEABoGCGAj18+v3q6uq3TxFL4cMFavoSgQJAxdwE+vGlNCXpwdvQyxMIVG3QA8AZMy+B3jzWZnXeDopHj0ABICWzEuh1EQz03pOSIiD9Wt8pvp0ogWq6RKAAUDIngf756CjMV9KBD0ehBs2jR6AAkJA5CXRn6DJXatCmSAHFRaAA0MGMBJrvYaw32AfcFx6BAkAHMxKobd37gGvhWwSKPwEgB4G6QKAA0MGMBHpswq/1WUvTNOERKADkzEig2aVhy7xb9G5IEokEGnJLAFgscxLol4ujQd9JB26O/jQqpa0gUABIx5wEms9jOhrzyc9XOb+WM+mDZjGFCbT+gUABwMqsBJq9v9CWcq6fhSUQXlzrNCYAgGxuAs0Ob2SFrp+GRmRKIVAAgJKZCfTI4ePVmydPnjy9ehsRzw6BAkA65ifQXtj26Wxns8n/BwBgI7mjUieYkojnk0/7TP7QAWAZJHdU6gQnIP1TOTUo4fyhhItkCWVe/i+OEs4fSrhIllDm5f/iKOH8oYSLZAllXv4vjhLOH0q4SJZQ5uX/4ijh/KGEi2QJZV7+L44Szh9KuEiWUObl/+Io4fyhhItkCWVe/i+OEs4fSrhIllDm5f/iKOH8oYSLZAllXv4vjhLOH0q4SJZQ5uX/4ijh/KGEi2QJZV7+L44Szh9KuEiWUObl/+Io4fyhhItkCWVe/i+OEs4fSrhIllDm5f/iKOH8oYSLZAllXv4vjhLOH0q4SJZQ5uX/4ijh/KGEi2QJZV7+L44Szh9KuEiWUObl/+Io4fyhhIvkHMsMAJAEBAoAEAkCBQCIBIECAESCQAEAIkGgAACRIFAAgEgQKABAJAgUACASBAoAEAkCBQCIBIECAESCQAEAIkGgAACRIFAAgEgQKABAJAgUACASBAoAEAkCBQCIBIECAESCQAEAIkGgAACRIFAAgEgQKABAJAgUACASBAoAEAkCBQCIZPYCvXl5sVqtH7ybOh8p+fPRN39v3pklnHWZD2/urVarW+3lmXUJsw8/5CV8+rk5srQSFny5WD0XbxZZQg/mLtD3x19SzvqvU+ckHYcXK0mgZglnXeY686vV9/qhhZTw+Ourci/0srASlvz5aLVadgl9mLlAr1eC591nz4PD5UoSqFnCWZdZyvzqrnFoCSUU/mwrz6xLWHEpZX6ZJfRh3gLN/wjePrYRPj6WnTNvii+gKIxZwlmXucj826zM/foXcWg5Jcx2x4Llrfd/P+b+TtGKX1oJS64lNy6zhF7MW6C7+r/R3DoPp85NEj4ULR/x35xZwlmX+VrUO/PcFy8XVsJjnss/DLlDylcLK2FJbkgh0EWW0I9ZC7T5jzXv0L7zuf3sOXBz/IO9evBYCNQs4bzLfNk06JzlmXcJj1mu/kTkEskLu7QSFuT99P+9/mUusoSezFqgx7+C9e9G+o3Nmbz990waRDJLuJgyVwVZcAmrvxaLLGH+x2FXC3SRJfRk1gJtGoRK3WbG7Nbff5ZH4c0SLqbM1XdsuSU8FrD4NS6xhMdq5cNMCHSJJfRl7gIV3Su7RfyavuZ/tlWBaiVcTJmr79hSS3h4c1HlfYElPP4XevzjJwt0aSX0ZtYClX8118vpq5YEapZwKWWuh1iWWcJ8is9q/ax4vcASXha/O1GMBZbQGwR6epyDQPPJrvUg/AJLWAj01rOiG3B5JazyjEAzBHqKnIFAm8UCiyzh4f+690M+Ha0YSFlcCesRIgSaIdBTZPkCzScHVkOzCy1hVk5JyyvZiyvhpf63b3ElDACBnh6LF+iNWIa01BIWVN28Syuh6c2llTCEWQt0oWN9Sx+Fz8NM3K6XWi2yhBW7oiQLK2GzUoBR+Gz+Al3ibLOFzwM9fqFW34u1KUssYc11LdAllXC3UlleCYOYtUAXut5h2SuRXq+UJt0CSygoBbqwEloEurASBjFrgS50xa0k0OWtMt6t1O/T0kq4k/48lHWvhZXQItCFlTCIWQt0oTFf5IDKZgnnXeZjpewbNUb5wkp49IU0Plb8HhdWQkHTubnUEnowb4HW4SWXFXVQFqhZwlmXWYR4Uw4tqYTFDK18Bv3Ny7qvYmElFDQCXWoJPZi3QJcZ91rZ0mNZsb7V9l/p0mWVMLt51OR+mTH3axqBLrWEHsxcoNk/FrjzironklnC+ZZZ3u5CCHRRJcyqmK4FYq7BwkpYIQl0oSX0YO4CXeLef6pAl7Tf4Z9S7awR6JJKWFDuyrnkfUcLZIEus4QezF6gAABTgUABACJBoAAAkSBQAIBIECgAQCQIFAAgEgQKABAJAgUAiASBAgBEgkABACJBoAAAkSBQAIBIECgAQCQIFAAgEgQKABAJAgUAiASBAgBEgkABACJBoAAAkSBQAIBIECgAQCQIFAAgEgQKABAJAgUAiASBAgBEgkABACJBoAAAkSBQAIBIECgAQCQIFAAgEgQKABAJAgUAiASBAgBEgkABACJBoAAAkSBQAIBIECgAQCQIFAAgEgQKABAJAgUAiASBAgBEgkABACJBoAAAkSBQAIBIECgAQCQIFAAgEgQKABAJAgUAiASBAgBEgkABACJBoAAAkSBQAIBIECgAQCQIFAAgEgQKp85upfMwO7xYffP3qTMGgEDh1EGgcLIgUDh1ECicLAgUZsKfj3AmnBoIFGYCAoXTA4HCTECgcHogUJgJikCrPtDjsTufD++/Xa1uv8qPvrlYrW49Eye9v7dare6/+jxJfuEcQKAwE1wC/c8X9cjSzePy1d3ynC8X1ZjT7XdT5RmWDgKFmeAS6H+rNLn+txf1KP3z/BThzxVNfxgKBAozwSHQYwXzbZbdPKqrmh8uyipo/lHerj+8vxB1UoDEIFCYCS6B3im6OK9X0qv8xXX9Pj9p/cskWYbFg0BhJrgE+rz+tLJkdd5lY83rvIMUYAAQKMwEh0CrY/qrYny+OvnLBW14GAYECjMhWKAyd5jKBEOAQGEmhAlUGoNHoDAYCBRmQrBAkSYMDgKFmRDchGf2JwwOAoWZECbQ4wnV+DzAcCBQmAlhAs2jiH5TLeHcMY0JBgKBwkwIFGg+DL9+9jnLvr5eMZEeBgKBwkwIFGixNqkJYQ8wBAgUZkKoQLPrC/wJA4NAYSYECzQ7vMnjgd56+scEuYXzAIECAESCQAEAIkGgAACRIFAAgEgQKABAJAgUACASBAoAEAkCBQCIBIECAESCQAEAIkGgAACRIFAAgEgQKABAJAgUACASBAoAEAkCBQCIBIECAESCQAEAIkGgAACRIFAAgEgQKABAJAgUACASBAoAEAkCBQCIBIECAESCQAEAIkGgAACRIFAAgEgQKABAJAgUACASBAoAEAkCBQCIBIECAESCQAEAIkGgAACRIFAAgEgQKABAJAgUACASBAoAEAkCBQCIBIECAESCQAEAIkGgAACRIFAAgEgQKABAJAgUACASBAoAEAkCBQCIBIECAETy/wOWJU8K1qzMqwAAAABJRU5ErkJggg==" width="672" /></p>
+<pre class="r"><code>options(scipen = 999)
+setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
+
+k = .0005
+
+forecastedPortfolioReturns &lt;- t(read.csv(file=&quot;ForecastedPROptimized.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+forecastedPortfolioReturns[, 1]  &lt;- as.numeric(forecastedPortfolioReturns[, 1])
+
+forecastedPortfolioReturnsEqualWeights &lt;- t(read.csv(file=&quot;ForecastedPREqualWeights.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+forecastedPortfolioReturnsEqualWeights[, 1]  &lt;- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
+
+forecastedPortfolioReturnsSP500 &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturnsSP500.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+forecastedPortfolioReturnsSP500[, 1]  &lt;- as.numeric(forecastedPortfolioReturnsSP500[, 1])
+
+cumulativeForecastedPortfolioReturns &lt;- cumsum(forecastedPortfolioReturns[, 1])
+cumulativeForecastedPortfolioReturnsEqualWeights &lt;- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
+cumulativeForecastedPortfolioReturnsSP500 &lt;- cumsum(forecastedPortfolioReturnsSP500[, 1])
+
+plot(cumulativeForecastedPortfolioReturns,type=&quot;l&quot;,col=&quot;red&quot;, lty=1, main = &quot;Cumulative Returns Over Time&quot;, xlab = &quot;Time&quot;, ylab = &quot;Cumulative Returns&quot;)
+lines(cumulativeForecastedPortfolioReturnsEqualWeights,col=&quot;green&quot;, lty=1)
+lines(cumulativeForecastedPortfolioReturnsSP500,col=&quot;blue&quot;, lty=1)
+
+forecastedWeights &lt;- t(read.csv(file=&quot;ForecastedWOptimized.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+forecastedWeights[, 1]  &lt;- as.numeric(forecastedWeights[, 1])
+forecastedPortfolioReturns &lt;- 1+forecastedPortfolioReturns
+forecastedWeights &lt;- (1-(k*forecastedWeights))
+forecastedPortfolioReturns &lt;- (1-(forecastedWeights*forecastedPortfolioReturns))
+
+forecastedWeightsEqualWeights &lt;- t(read.csv(file=&quot;ForecastedWEqualWeights.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+forecastedWeightsEqualWeights[, 1]  &lt;- as.numeric(forecastedWeightsEqualWeights[, 1])
+forecastedPortfolioReturnsEqualWeights &lt;- 1+forecastedPortfolioReturnsEqualWeights
+forecastedWeightsEqualWeights &lt;- (1-(k*forecastedWeightsEqualWeights))
+forecastedPortfolioReturnsEqualWeights &lt;- (1-(forecastedWeightsEqualWeights*forecastedPortfolioReturnsEqualWeights))
+
+cumulativeForecastedPortfolioReturns &lt;- cumsum(forecastedPortfolioReturns[, 1])
+cumulativeForecastedPortfolioReturnsEqualWeights &lt;- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
+cumulativeForecastedPortfolioReturnsSP500 &lt;- cumsum(forecastedPortfolioReturnsSP500[, 1])
+
+plot(cumulativeForecastedPortfolioReturns,type=&quot;l&quot;,col=&quot;red&quot;, lty=1, main = &quot;Cumulative Returns Over Time (Transaction Consts)&quot;, xlab = &quot;Time&quot;, ylab = &quot;Cumulative Returns&quot;)
+lines(cumulativeForecastedPortfolioReturnsEqualWeights,col=&quot;green&quot;, lty=1)
+lines(cumulativeForecastedPortfolioReturnsSP500,col=&quot;blue&quot;, lty=1)
+
+legend(&quot;topleft&quot;, legend=c(&quot;Forecasted Portfolio (Optimized)&quot;, &quot;Forecasted Portfolio (Equal Weights)&quot;, &quot;S&amp;P 500&quot;),
+       col=c(&quot;red&quot;,&quot;green&quot;,&quot;blue&quot;), lty=1, cex=1,bty=&quot;n&quot;)</code></pre>
+<pre class="r"><code>options(scipen = 999)
+setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
+
+k = .0005
+forecastedWeights &lt;- t(read.csv(file=&quot;ForecastedWOptimized.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+
+forecastedPortfolioReturns &lt;- t(read.csv(file=&quot;ForecastedPROptimized.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+
+priorTotals &lt;- as.data.frame(rowSums(forecastedPortfolioReturns))
+
+forecastedPortfolioReturns[,1] &lt;- 1+forecastedPortfolioReturns[,1]
+forecastedPortfolioReturns &lt;- as.data.frame(forecastedPortfolioReturns)
+forecastedWeights &lt;- as.data.frame((1-(k*forecastedWeights)))
+
+forecastedPortfolioReturns[,1] &lt;- forecastedPortfolioReturns[,1] * forecastedWeights[match(row.names(forecastedPortfolioReturns), row.names(forecastedWeights)), 1]
+forecastedPortfolioReturns[,1] &lt;- forecastedPortfolioReturns[,1]-1
+
+forecastedPortfolioReturns &lt;- as.data.frame(rowSums(forecastedPortfolioReturns))
+
+priorTotals</code></pre>
+<pre><code>##      rowSums(forecastedPortfolioReturns)
+## V1                         -0.0081947087
+## V2                          0.0314137470
+## V3                         -0.0362508463
+## V4                          0.0122018773
+## V5                          0.0079610213
+## V6                          0.0289294924
+## V7                         -0.0039511252
+## V8                          0.0007459575
+## V9                          0.0175646194
+## V10                         0.0030976786
+## V11                        -0.0150670728
+## V12                         0.0080329835
+## V13                         0.0149931524
+## V14                        -0.0169547814
+## V15                        -0.0133547268
+## V16                         0.0443976710
+## V17                        -0.0217355242
+## V18                         0.0217154535
+## V19                         0.0032653319
+## V20                        -0.0058338854
+## V21                         0.0076842336
+## V22                        -0.0130357463
+## V23                        -0.0080645246
+## V24                         0.0131864431
+## V25                        -0.0060797081
+## V26                        -0.0071848591
+## V27                         0.0246594522
+## V28                        -0.0087142209
+## V29                         0.0090865975
+## V30                         0.0263686424
+## V31                        -0.0115179015
+## V32                        -0.0187393371
+## V33                         0.0088082653
+## V34                         0.0274215347
+## V35                        -0.0044407448
+## V36                        -0.0407399163
+## V37                         0.0001426720
+## V38                        -0.0084211956
+## V39                         0.0109512907
+## V40                         0.0339081856
+## V41                        -0.0230336451
+## V42                         0.0124252871
+## V43                        -0.0233409910
+## V44                         0.0475068749
+## V45                        -0.0132544687
+## V46                         0.0306243460
+## V47                        -0.0097209455
+## V48                        -0.0017594835
+## V49                        -0.0248177967
+## V50                         0.0225605842
+## V51                        -0.0648942711
+## V52                         0.0631228876
+## V53                         0.0156778053
+## V54                        -0.0363088749
+## V55                        -0.0269122257
+## V56                        -0.0109688677
+## V57                         0.0715193015
+## V58                         0.0185731682
+## V59                        -0.0067512550
+## V60                        -0.0019283911
+## V61                         0.0178087294
+## V62                         0.0337290492
+## V63                         0.0123567327
+## V64                        -0.0363639603
+## V65                         0.0130427061
+## V66                        -0.0008360812
+## V67                         0.0238945765
+## V68                         0.0121037668
+## V69                         0.0024605460
+## V70                         0.1132290593
+## V71                         0.0273184027
+## V72                         0.0189566630
+## V73                        -0.0003508214
+## V74                         0.0092379138
+## V75                         0.0012732794
+## V76                        -0.0003784042
+## V77                         0.0063314879
+## V78                        -0.0110971324
+## V79                         0.0294138612
+## V80                         0.0346297620
+## V81                         0.0031029332
+## V82                        -0.0042442824
+## V83                        -0.0346166509
+## V84                        -0.0164240952
+## V85                         0.0044211409
+## V86                         0.0163128550
+## V87                         0.0064636447
+## V88                        -0.0038614351
+## V89                        -0.0062519518
+## V90                        -0.0092600116
+## V91                         0.0017820674
+## V92                         0.0320811507
+## V93                        -0.0015442332
+## V94                         0.0114675656
+## V95                         0.0094213917
+## V96                        -0.0159371565
+## V97                         0.0050835981
+## V98                        -0.0030117734
+## V99                        -0.0150933925
+## V100                       -0.0123335893
+## V101                       -0.0213383961
+## V102                       -0.0117259978
+## V103                        0.0263592515
+## V104                        0.0292732670
+## V105                        0.0097988507
+## V106                        0.0001092483
+## V107                        0.0083868697
+## V108                        0.0255022468
+## V109                        0.0027229694
+## V110                       -0.0094237997
+## V111                       -0.0186626095
+## V112                        0.0109554098
+## V113                       -0.0103882350
+## V114                       -0.0043182972
+## V115                        0.0042424399
+## V116                        0.0029939333
+## V117                       -0.0056474196
+## V118                       -0.0141451741
+## V119                        0.0201645545
+## V120                       -0.0156383772
+## V121                        0.0038991754
+## V122                       -0.0042126502
+## V123                       -0.0137972123
+## V124                        0.0351548400
+## V125                        0.0205820273
+## V126                        0.0084270722
+## V127                        0.0090424773
+## V128                        0.0208985375
+## V129                       -0.0034501997
+## V130                       -0.0026459827
+## V131                       -0.0078259340
+## V132                       -0.0347273825
+## V133                       -0.0131446249
+## V134                       -0.0168126712
+## V135                        0.0238394893
+## V136                        0.0147994090
+## V137                       -0.0009075768
+## V138                        0.0186074668
+## V139                       -0.0176001169
+## V140                       -0.0549380039
+## V141                       -0.0239010393
+## V142                        0.0230154506
+## V143                       -0.0154230866
+## V144                        0.0277179451
+## V145                        0.0034194084
+## V146                        0.0009728916
+## V147                        0.0152993170
+## V148                        0.0184860094
+## V149                       -0.0084397430
+## V150                       -0.0001676940
+## V151                       -0.0102539762
+## V152                       -0.0076391761
+## V153                        0.0037859242
+## V154                       -0.0001840579
+## V155                        0.0064339078
+## V156                        0.0210687600
+## V157                        0.0020438868
+## V158                       -0.0080353555
+## V159                        0.0133836368
+## V160                        0.0286937537
+## V161                       -0.0138029408
+## V162                       -0.0069754897
+## V163                        0.0014601828
+## V164                        0.0031444364
+## V165                        0.1133366599
+## V166                       -0.0079234488
+## V167                       -0.0225886149
+## V168                       -0.0173606248
+## V169                        0.0073929327
+## V170                       -0.0067327312
+## V171                        0.0207423904
+## V172                        0.0449826572
+## V173                       -0.0361001027
+## V174                        0.0033582008
+## V175                        0.0120422854
+## V176                        0.0420327334
+## V177                       -0.0031023286
+## V178                        0.0050444782
+## V179                       -0.0126735376
+## V180                       -0.0298274894
+## V181                       -0.0191301563
+## V182                        0.0643969727
+## V183                       -0.0476412383
+## V184                       -0.0043153625
+## V185                       -0.0380635995
+## V186                        0.0085784430
+## V187                        0.0195010201
+## V188                       -0.0210690195
+## V189                        0.0243162748
+## V190                        0.0258035508
+## V191                        0.0129546448
+## V192                        0.0055593474
+## V193                        0.0215255582
+## V194                       -0.0007289542
+## V195                       -0.0329979211
+## V196                       -0.0040502515
+## V197                       -0.0051958832
+## V198                       -0.0008142237
+## V199                       -0.0085290872
+## V200                       -0.0199699997
+## V201                        0.0074188660
+## V202                        0.0236517955
+## V203                        0.0278098657
+## V204                       -0.0084219845
+## V205                       -0.0109649425
+## V206                       -0.0045103166
+## V207                       -0.0093519985
+## V208                       -0.0069306496
+## V209                       -0.0101281712
+## V210                        0.0104134824
+## V211                        0.0286984182
+## V212                        0.0027979973
+## V213                       -0.0192153759
+## V214                        0.0053996262
+## V215                        0.0147029442
+## V216                        0.0005280141
+## V217                       -0.0013765780
+## V218                       -0.0102377076
+## V219                        0.0036760414
+## V220                       -0.0190246615
+## V221                        0.0102923458
+## V222                        0.0048308860
+## V223                        0.0159337977
+## V224                       -0.0049893555
+## V225                       -0.0262321802
+## V226                        0.0114625437
+## V227                       -0.0013868807
+## V228                        0.0030251971
+## V229                        0.0079092660
+## V230                        0.0245103063
+## V231                        0.0136108228
+## V232                        0.0094004837
+## V233                        0.0119289924
+## V234                       -0.0279468193
+## V235                        0.0212217236
+## V236                       -0.0434042296
+## V237                        0.0131021932
+## V238                        0.0082300084
+## V239                        0.0104832711
+## V240                        0.0016753970
+## V241                        0.0173954595
+## V242                       -0.0021945694
+## V243                        0.0089571900
+## V244                       -0.0117389035
+## V245                       -0.0244860068
+## V246                        0.0261069230
+## V247                        0.0113068126
+## V248                       -0.0400336832
+## V249                       -0.0031226700
+## V250                       -0.0064330739
+## V251                       -0.0004322164
+## V252                       -0.0293572106
+## V253                       -0.0452960946
+## V254                        0.0070616188
+## V255                        0.0081981279
+## V256                       -0.0280463968
+## V257                        0.0025769446
+## V258                        0.0229118752
+## V259                        0.0289796879
+## V260                        0.0030836268
+## V261                        0.0154055873
+## V262                       -0.0249714659
+## V263                        0.0014788885
+## V264                       -0.0488138715
+## V265                        0.0245505076
+## V266                        0.0280088562
+## V267                       -0.0019011313
+## V268                        0.0131406768
+## V269                        0.0066323010
+## V270                       -0.0069497279
+## V271                       -0.0427231825
+## V272                       -0.0275748273
+## V273                        0.0071976447
+## V274                        0.0274564367
+## V275                       -0.0233504040
+## V276                        0.0159207472
+## V277                        0.0133352499
+## V278                        0.0153860829
+## V279                       -0.0038271527
+## V280                        0.0068320376
+## V281                        0.0146649868
+## V282                        0.0066644367
+## V283                        0.0136000890
+## V284                       -0.0100384733
+## V285                       -0.0170056545
+## V286                       -0.0071311571
+## V287                       -0.0188434415
+## V288                       -0.0010287306
+## V289                        0.0027805355
+## V290                        0.0047327220
+## V291                        0.0120764484
+## V292                        0.0172769872
+## V293                        0.0034922107
+## V294                        0.0030988180
+## V295                        0.0245763678
+## V296                        0.0079407041
+## V297                       -0.0110591677
+## V298                        0.0048250938
+## V299                       -0.0126762121
+## V300                       -0.0112306750
+## V301                        0.0010141738
+## V302                        0.0007056763
+## V303                       -0.0064778492
+## V304                        0.0039820719
+## V305                       -0.0065049759
+## V306                       -0.0111375207
+## V307                        0.0076713911
+## V308                       -0.0163727446
+## V309                       -0.0026255646
+## V310                       -0.0085556609
+## V311                        0.0108582342
+## V312                       -0.0091190260
+## V313                        0.0058130009
+## V314                       -0.0102504627
+## V315                        0.0213312034
+## V316                        0.0082251044
+## V317                        0.0109399882
+## V318                       -0.0042015839
+## V319                       -0.0019669581
+## V320                       -0.0083680196
+## V321                       -0.0134565980
+## V322                       -0.0249583723
+## V323                        0.0004543105
+## V324                       -0.0011738548
+## V325                        0.0178566424
+## V326                        0.0023060697
+## V327                       -0.0022551426
+## V328                       -0.0139272067
+## V329                       -0.0030879349
+## V330                       -0.0035347308
+## V331                        0.0271317266
+## V332                       -0.0042854934
+## V333                        0.0106276111
+## V334                       -0.0004195602
+## V335                        0.0107247111
+## V336                        0.0132085273
+## V337                        0.0008446757
+## V338                       -0.0036337503
+## V339                        0.0120517757
+## V340                       -0.0011072811
+## V341                        0.0197286230
+## V342                       -0.0061630676
+## V343                       -0.0095674212
+## V344                        0.0073087847
+## V345                       -0.0008959155
+## V346                       -0.0185752262
+## V347                       -0.0086209230
+## V348                        0.0008831688
+## V349                        0.0061118554
+## V350                       -0.0049158361
+## V351                       -0.0064509111
+## V352                        0.0155751513
+## V353                       -0.0104321944
+## V354                        0.0387803883
+## V355                        0.0209173268
+## V356                        0.0069488354
+## V357                        0.0133502158
+## V358                        0.0084112133
+## V359                        0.0345063430
+## V360                       -0.0089560558
+## V361                        0.0074693665
+## V362                       -0.0176649467
+## V363                        0.0256873798
+## V364                       -0.0111759079
+## V365                       -0.0062156703
+## V366                        0.0172480526
+## V367                       -0.0276877174
+## V368                       -0.0023856159
+## V369                       -0.0045933671
+## V370                       -0.0063299704
+## V371                        0.0129883722
+## V372                        0.0200400553
+## V373                        0.0183315408
+## V374                        0.0157166830
+## V375                       -0.0132125962
+## V376                       -0.0360527379
+## V377                        0.0278299138
+## V378                       -0.0054901902
+## V379                        0.0109072643
+## V380                        0.0114749879
+## V381                       -0.0283954856
+## V382                       -0.0072607122
+## V383                       -0.0483136483
+## V384                       -0.0004910266
+## V385                        0.0270652228
+## V386                        0.0073089398
+## V387                        0.0021667687
+## V388                        0.0313420483
+## V389                        0.0121945695
+## V390                        0.0136187622
+## V391                       -0.0280517423
+## V392                        0.0447303380
+## V393                       -0.0135328339
+## V394                       -0.0104897725
+## V395                       -0.0141055985
+## V396                       -0.0002783729
+## V397                        0.0166281048
+## V398                       -0.0069040288
+## V399                        0.0161066933
+## V400                       -0.0171679123
+## V401                        0.0088519663
+## V402                        0.0097599787
+## V403                        0.0265854315
+## V404                        0.0017010551
+## V405                       -0.0154381276
+## V406                       -0.0026498366
+## V407                        0.0009688238
+## V408                       -0.0055379929
+## V409                       -0.0271755567
+## V410                       -0.0312739466
+## V411                        0.0220140580
+## V412                       -0.0318580938
+## V413                        0.0018264604
+## V414                        0.0063720363
+## V415                       -0.0555905483
+## V416                       -0.0365123604
+## V417                        0.0319568984
+## V418                       -0.0358002388
+## V419                       -0.0101819126
+## V420                       -0.0597315647
+## V421                        0.0195774473
+## V422                       -0.0041745589
+## V423                        0.0145077114
+## V424                        0.0116765546
+## V425                        0.0154751538
+## V426                        0.0376764693
+## V427                        0.0111980397
+## V428                        0.0123391069
+## V429                       -0.0142750426
+## V430                       -0.0026060891
+## V431                        0.0063431908
+## V432                       -0.0025198880
+## V433                        0.0083076850
+## V434                        0.0044619330
+## V435                        0.0011000503
+## V436                        0.0039439541
+## V437                        0.0000000000
+## V438                        0.0000000000
+## V439                        0.0000000000
+## V440                        0.0000000000
+## V441                        0.0000000000
+## V442                       -0.0037736530
+## V443                        0.0038010056
+## V444                        0.0008932053
+## V445                        0.0048206089
+## V446                        0.0000000000
+## V447                        0.0000000000
+## V448                        0.0000000000
+## V449                        0.0000000000
+## V450                        0.0000000000
+## V451                        0.0000000000
+## V452                       -0.0036022923
+## V453                       -0.0052695905
+## V454                                  NA</code></pre>
+<pre class="r"><code>forecastedPortfolioReturns</code></pre>
+<pre><code>##      rowSums(forecastedPortfolioReturns)
+## V1                        -0.00819470870
+## V2                         0.02721454502
+## V3                        -0.03996036286
+## V4                         0.01054917392
+## V5                         0.00607817655
+## V6                         0.02281003121
+## V7                        -0.00641171641
+## V8                        -0.00202116544
+## V9                         0.00977715750
+## V10                       -0.00251319654
+## V11                       -0.02061877437
+## V12                        0.00119497112
+## V13                        0.01086000123
+## V14                       -0.02023612577
+## V15                       -0.01726283404
+## V16                        0.04126128626
+## V17                       -0.02504432943
+## V18                        0.01792950467
+## V19                       -0.00162456939
+## V20                       -0.01080015891
+## V21                        0.00530200256
+## V22                       -0.01764319025
+## V23                       -0.01291240888
+## V24                        0.00893743681
+## V25                       -0.00840095807
+## V26                       -0.00921038356
+## V27                        0.02291145737
+## V28                       -0.01082727998
+## V29                        0.00621095827
+## V30                        0.02268495189
+## V31                       -0.02019841939
+## V32                       -0.02309919064
+## V33                        0.00602594606
+## V34                        0.02050009699
+## V35                       -0.01134752827
+## V36                       -0.04300237220
+## V37                       -0.00602638291
+## V38                       -0.01545237310
+## V39                        0.00444663458
+## V40                        0.02845439200
+## V41                       -0.03463653492
+## V42                        0.00157256410
+## V43                       -0.03344228370
+## V44                        0.04135274255
+## V45                       -0.01850878788
+## V46                        0.02391549875
+## V47                       -0.01369855560
+## V48                       -0.00812764980
+## V49                       -0.03077883908
+## V50                        0.01241356024
+## V51                       -0.07259704488
+## V52                        0.05585005795
+## V53                        0.00984792763
+## V54                       -0.04759041846
+## V55                       -0.03623054089
+## V56                       -0.02032889966
+## V57                        0.06240676778
+## V58                        0.01124685813
+## V59                       -0.01355450249
+## V60                       -0.00729161642
+## V61                        0.01318859145
+## V62                        0.02669245134
+## V63                        0.00671071240
+## V64                       -0.04340365261
+## V65                        0.00856380471
+## V66                       -0.00650519062
+## V67                        0.01954237456
+## V68                        0.00730360756
+## V69                       -0.00236036912
+## V70                        0.11012857985
+## V71                        0.02361854840
+## V72                        0.01722589232
+## V73                       -0.00253159259
+## V74                        0.00746535401
+## V75                       -0.00054420390
+## V76                       -0.00291152305
+## V77                        0.00365646734
+## V78                       -0.01467657059
+## V79                        0.02505258563
+## V80                        0.03118876707
+## V81                        0.00010128245
+## V82                       -0.00709056801
+## V83                       -0.03733161515
+## V84                       -0.02012458407
+## V85                        0.00192179097
+## V86                        0.01348561067
+## V87                        0.00430359113
+## V88                       -0.00816450567
+## V89                       -0.00931473730
+## V90                       -0.01137753243
+## V91                       -0.00117227602
+## V92                        0.02832905058
+## V93                       -0.00458893310
+## V94                        0.00844335890
+## V95                        0.00280407111
+## V96                       -0.01974790091
+## V97                       -0.00026718572
+## V98                       -0.00575375665
+## V99                       -0.01990168768
+## V100                      -0.01634613664
+## V101                      -0.02540246539
+## V102                      -0.01528595876
+## V103                       0.02324903687
+## V104                       0.02371556970
+## V105                       0.00596426634
+## V106                      -0.00167796951
+## V107                       0.00650716078
+## V108                       0.02198652095
+## V109                      -0.00106330106
+## V110                      -0.01289715966
+## V111                      -0.02277759954
+## V112                       0.00647393760
+## V113                      -0.01159826155
+## V114                      -0.00594230089
+## V115                       0.00306697187
+## V116                      -0.00082055802
+## V117                      -0.00948827209
+## V118                      -0.01747626683
+## V119                       0.01771896724
+## V120                      -0.01826637695
+## V121                       0.00013141547
+## V122                      -0.00865969437
+## V123                      -0.01425334718
+## V124                       0.03230550629
+## V125                       0.01967061195
+## V126                       0.00489257193
+## V127                       0.00618394191
+## V128                       0.01831003653
+## V129                      -0.00852462767
+## V130                      -0.00795493857
+## V131                      -0.01287632909
+## V132                      -0.03610916419
+## V133                      -0.01492979621
+## V134                      -0.02461002779
+## V135                       0.02093836387
+## V136                       0.01204106254
+## V137                      -0.00370496489
+## V138                       0.01186617484
+## V139                      -0.02381131378
+## V140                      -0.06021488395
+## V141                      -0.02940535358
+## V142                       0.02191387492
+## V143                      -0.01702432650
+## V144                       0.02557624944
+## V145                       0.00227030934
+## V146                      -0.00562979780
+## V147                       0.00833233507
+## V148                       0.01677855426
+## V149                      -0.01252489394
+## V150                      -0.00456247224
+## V151                      -0.01198431983
+## V152                      -0.01261035679
+## V153                      -0.00113382300
+## V154                      -0.00078987295
+## V155                       0.00554603284
+## V156                       0.02007344123
+## V157                       0.00073694697
+## V158                      -0.00968934046
+## V159                       0.00789233227
+## V160                       0.02348205525
+## V161                      -0.01539630683
+## V162                      -0.00821307802
+## V163                      -0.00004947087
+## V164                       0.00148759902
+## V165                       0.11148237221
+## V166                      -0.01416975005
+## V167                      -0.02463900777
+## V168                      -0.02360204801
+## V169                       0.00572719889
+## V170                      -0.00773239188
+## V171                       0.01989384496
+## V172                       0.03920703852
+## V173                      -0.04199362682
+## V174                      -0.00043786779
+## V175                       0.01015069538
+## V176                       0.04040347769
+## V177                      -0.00489841154
+## V178                      -0.00056052533
+## V179                      -0.01724258119
+## V180                      -0.03155989731
+## V181                      -0.02392559632
+## V182                       0.06032046832
+## V183                      -0.04828440956
+## V184                      -0.00842504409
+## V185                      -0.03934861449
+## V186                       0.00416087697
+## V187                       0.01536684263
+## V188                      -0.02236960974
+## V189                       0.02258503092
+## V190                       0.02394406291
+## V191                       0.01178723174
+## V192                       0.00426932784
+## V193                       0.01678149102
+## V194                      -0.00520151590
+## V195                      -0.03384800707
+## V196                      -0.00486314569
+## V197                      -0.00843230442
+## V198                      -0.00575078796
+## V199                      -0.01277720944
+## V200                      -0.02236030008
+## V201                       0.00459717794
+## V202                       0.01943651819
+## V203                       0.02467018129
+## V204                      -0.01054176652
+## V205                      -0.01203251497
+## V206                      -0.00639746949
+## V207                      -0.01137214984
+## V208                      -0.00903285508
+## V209                      -0.01220780616
+## V210                       0.00843494595
+## V211                       0.02635175610
+## V212                       0.00072203781
+## V213                      -0.02351287785
+## V214                       0.00232794235
+## V215                       0.01275866638
+## V216                      -0.00123334283
+## V217                      -0.00313059066
+## V218                      -0.01151866601
+## V219                       0.00070001793
+## V220                      -0.02279723720
+## V221                       0.00788806533
+## V222                       0.00269204361
+## V223                       0.01346085371
+## V224                      -0.00747924026
+## V225                      -0.02887086684
+## V226                       0.00887928674
+## V227                      -0.00382069273
+## V228                       0.00014505457
+## V229                       0.00654697040
+## V230                       0.02171514040
+## V231                       0.01123480134
+## V232                       0.00726334379
+## V233                       0.01039210561
+## V234                      -0.02913639766
+## V235                       0.02005007938
+## V236                      -0.04589656144
+## V237                       0.01003199144
+## V238                       0.00639279319
+## V239                       0.00876159795
+## V240                       0.00019442519
+## V241                       0.01615745455
+## V242                      -0.00376009231
+## V243                       0.00767675579
+## V244                      -0.01326613611
+## V245                      -0.02567875892
+## V246                       0.02505106452
+## V247                       0.01013034065
+## V248                      -0.04111856571
+## V249                      -0.00370043116
+## V250                      -0.00809072594
+## V251                      -0.00143450276
+## V252                      -0.03016441645
+## V253                      -0.04704887480
+## V254                       0.00608669178
+## V255                       0.00772896831
+## V256                      -0.02902439922
+## V257                       0.00142977855
+## V258                       0.02199386259
+## V259                       0.02776814613
+## V260                       0.00167485624
+## V261                       0.01455163913
+## V262                      -0.02592716284
+## V263                      -0.00001089006
+## V264                      -0.05044710440
+## V265                       0.02333583401
+## V266                       0.02722810977
+## V267                      -0.00303114200
+## V268                       0.01232899767
+## V269                       0.00532663764
+## V270                      -0.00818103489
+## V271                      -0.04399494575
+## V272                      -0.02933088243
+## V273                       0.00539776740
+## V274                       0.02556997945
+## V275                      -0.02437424066
+## V276                       0.01369616955
+## V277                       0.00911080086
+## V278                       0.01219645116
+## V279                      -0.00580818318
+## V280                       0.00444829528
+## V281                       0.01267195338
+## V282                       0.00517866941
+## V283                       0.01138449749
+## V284                      -0.01220549192
+## V285                      -0.01918719144
+## V286                      -0.00811405876
+## V287                      -0.02045824822
+## V288                      -0.00461642258
+## V289                      -0.00173679860
+## V290                       0.00300066999
+## V291                       0.00768675058
+## V292                       0.01527963348
+## V293                       0.00180444555
+## V294                       0.00039118176
+## V295                       0.02145509922
+## V296                       0.00570860358
+## V297                      -0.01312774912
+## V298                      -0.00008396432
+## V299                      -0.01719186870
+## V300                      -0.01264581669
+## V301                      -0.00311381153
+## V302                      -0.00299784048
+## V303                      -0.00897211479
+## V304                      -0.00001316575
+## V305                      -0.01018841496
+## V306                      -0.01605095101
+## V307                       0.00352218509
+## V308                      -0.01956740819
+## V309                      -0.00552487123
+## V310                      -0.01632911651
+## V311                       0.00530394066
+## V312                      -0.01655188233
+## V313                      -0.00233700840
+## V314                      -0.01312123017
+## V315                       0.01300606510
+## V316                       0.00282878873
+## V317                       0.00592933155
+## V318                      -0.00785160400
+## V319                      -0.00342396101
+## V320                      -0.01560319784
+## V321                      -0.01548747682
+## V322                      -0.02655602669
+## V323                      -0.00688405783
+## V324                      -0.00809071866
+## V325                       0.01573469028
+## V326                      -0.00010915039
+## V327                      -0.00467098505
+## V328                      -0.01622670772
+## V329                      -0.00507735150
+## V330                      -0.01141939977
+## V331                       0.01968128363
+## V332                      -0.01176436423
+## V333                       0.00332166039
+## V334                      -0.00403870792
+## V335                       0.00923123825
+## V336                       0.01169771937
+## V337                      -0.00014223326
+## V338                      -0.00684569559
+## V339                       0.01036632244
+## V340                      -0.00639090250
+## V341                       0.01693467170
+## V342                      -0.01548032452
+## V343                      -0.01625157323
+## V344                       0.00373974419
+## V345                      -0.00582238637
+## V346                      -0.02599612379
+## V347                      -0.01539027546
+## V348                      -0.00427263992
+## V349                      -0.00197337910
+## V350                      -0.00580937446
+## V351                      -0.00780045187
+## V352                       0.01429924295
+## V353                      -0.01789024372
+## V354                       0.03159283311
+## V355                       0.02028135628
+## V356                       0.00007311397
+## V357                       0.01070256019
+## V358                       0.00587551624
+## V359                       0.02552132353
+## V360                      -0.01993736238
+## V361                      -0.00248820146
+## V362                      -0.02224507671
+## V363                       0.01609411714
+## V364                      -0.02127728784
+## V365                      -0.01553354562
+## V366                       0.01509752519
+## V367                      -0.03024365198
+## V368                      -0.00437681460
+## V369                      -0.00690850853
+## V370                      -0.00921959970
+## V371                       0.01071755326
+## V372                       0.01759650405
+## V373                       0.01655433405
+## V374                       0.01374572268
+## V375                      -0.01640677533
+## V376                      -0.04184347018
+## V377                       0.01919739800
+## V378                      -0.00971168234
+## V379                      -0.00647237657
+## V380                      -0.00814195987
+## V381                      -0.04731134346
+## V382                      -0.00895487060
+## V383                      -0.05069209859
+## V384                      -0.00264582896
+## V385                       0.01003043958
+## V386                       0.00131498871
+## V387                      -0.00825990240
+## V388                       0.02167083945
+## V389                      -0.00193675444
+## V390                       0.00469210653
+## V391                      -0.03386398868
+## V392                       0.04122414658
+## V393                      -0.01497198456
+## V394                      -0.01968287095
+## V395                      -0.02399195520
+## V396                      -0.00389530571
+## V397                       0.00990508910
+## V398                      -0.00775233330
+## V399                       0.00774660715
+## V400                      -0.02544580066
+## V401                      -0.00090827062
+## V402                       0.00283734466
+## V403                       0.01660125198
+## V404                      -0.00040200284
+## V405                      -0.01701077931
+## V406                      -0.00407252243
+## V407                      -0.00007287558
+## V408                      -0.00693570402
+## V409                      -0.02915497020
+## V410                      -0.03349058322
+## V411                       0.01713766782
+## V412                      -0.06188284603
+## V413                      -0.02589177893
+## V414                      -0.02039701385
+## V415                      -0.09885748692
+## V416                      -0.06493913521
+## V417                       0.02150703697
+## V418                      -0.04405199239
+## V419                      -0.02081244099
+## V420                      -0.06965746578
+## V421                      -0.00072274713
+## V422                      -0.02766457624
+## V423                      -0.00680341666
+## V424                      -0.01664132895
+## V425                      -0.01365775897
+## V426                       0.01547934739
+## V427                      -0.01145047064
+## V428                      -0.00597146207
+## V429                      -0.01926687177
+## V430                      -0.01510103195
+## V431                      -0.00868553587
+## V432                      -0.02121548711
+## V433                      -0.01309184491
+## V434                      -0.00682426977
+## V435                      -0.01495520241
+## V436                      -0.00909674129
+## V437                      -0.01189474144
+## V438                      -0.01056545675
+## V439                      -0.01278444966
+## V440                      -0.00780469640
+## V441                      -0.02356447146
+## V442                      -0.03048276439
+## V443                      -0.02225606690
+## V444                      -0.02500622140
+## V445                      -0.01902025601
+## V446                      -0.01400012240
+## V447                      -0.01441477311
+## V448                      -0.02315466719
+## V449                      -0.02626777004
+## V450                      -0.02438717585
+## V451                      -0.02274742232
+## V452                      -0.03450099393
+## V453                      -0.03655135356
+## V454                                  NA</code></pre>
+<pre class="r"><code>forecastedPortfolioReturnsEqualWeights &lt;- t(read.csv(file=&quot;ForecastedPREqualWeights.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+forecastedPortfolioReturnsEqualWeights[, 1]  &lt;- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
+
+forecastedPortfolioReturnsSP500 &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturnsSP500.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+forecastedPortfolioReturnsSP500[, 1]  &lt;- as.numeric(forecastedPortfolioReturnsSP500[, 1])
+
+cumulativeForecastedPortfolioReturns &lt;- cumsum(forecastedPortfolioReturns[, 1])
+cumulativeForecastedPortfolioReturnsEqualWeights &lt;- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
+cumulativeForecastedPortfolioReturnsSP500 &lt;- cumsum(forecastedPortfolioReturnsSP500[, 1])
+
+plot(cumulativeForecastedPortfolioReturns,type=&quot;l&quot;,col=&quot;red&quot;, lty=1, main = &quot;Cumulative Returns Over Time&quot;, xlab = &quot;Time&quot;, ylab = &quot;Cumulative Returns&quot;)
+lines(cumulativeForecastedPortfolioReturnsEqualWeights,col=&quot;green&quot;, lty=1)
+lines(cumulativeForecastedPortfolioReturnsSP500,col=&quot;blue&quot;, lty=1)</code></pre>
+<p><img src="data:image/png;base64,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" width="672" /></p>
+<pre class="r"><code># forecastedWeights &lt;- t(read.csv(file=&quot;ForecastedWOptimized.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+# forecastedWeights[, 1]  &lt;- as.numeric(forecastedWeights[, 1])
+# forecastedPortfolioReturns &lt;- 1+forecastedPortfolioReturns
+# forecastedWeights &lt;- (1-(k*forecastedWeights))
+# forecastedPortfolioReturns &lt;- (1-(forecastedWeights*forecastedPortfolioReturns))
+# 
+# forecastedWeightsEqualWeights &lt;- t(read.csv(file=&quot;ForecastedWEqualWeights.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+# forecastedWeightsEqualWeights[, 1]  &lt;- as.numeric(forecastedWeightsEqualWeights[, 1])
+# forecastedPortfolioReturnsEqualWeights &lt;- 1+forecastedPortfolioReturnsEqualWeights
+# forecastedWeightsEqualWeights &lt;- (1-(k*forecastedWeightsEqualWeights))
+# forecastedPortfolioReturnsEqualWeights &lt;- (1-(forecastedWeightsEqualWeights*forecastedPortfolioReturnsEqualWeights))
+# 
+# cumulativeForecastedPortfolioReturns &lt;- cumsum(forecastedPortfolioReturns[, 1])
+# cumulativeForecastedPortfolioReturnsEqualWeights &lt;- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
+# cumulativeForecastedPortfolioReturnsSP500 &lt;- cumsum(forecastedPortfolioReturnsSP500[, 1])
+# 
+# plot(cumulativeForecastedPortfolioReturns,type=&quot;l&quot;,col=&quot;red&quot;, lty=1, main = &quot;Cumulative Returns Over Time (Transaction Consts)&quot;, xlab = &quot;Time&quot;, ylab = &quot;Cumulative Returns&quot;)
+# lines(cumulativeForecastedPortfolioReturnsEqualWeights,col=&quot;green&quot;, lty=1)
+# lines(cumulativeForecastedPortfolioReturnsSP500,col=&quot;blue&quot;, lty=1)
+# 
+# legend(&quot;topleft&quot;, legend=c(&quot;Forecasted Portfolio (Optimized)&quot;, &quot;Forecasted Portfolio (Equal Weights)&quot;, &quot;S&amp;P 500&quot;),
+#        col=c(&quot;red&quot;,&quot;green&quot;,&quot;blue&quot;), lty=1, cex=1,bty=&quot;n&quot;)</code></pre>
 </div>
 <div id="mean-volatilty-sharpe-ratio-sortino-ratio-maximum-drawdown-turnover" class="section level1">
 <h1>Mean, Volatilty, Sharpe Ratio, Sortino Ratio, Maximum Drawdown, Turnover</h1>
 <pre class="r"><code>options(scipen = 999)
 setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
 
-forecastedPortfolioReturns &lt;- t(read.csv(file=&quot;ForecastedPortfolioReturns.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+forecastedPortfolioReturns &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturns.csv&quot;, header=TRUE, sep=&quot;,&quot;))
 forecastedPortfolioReturns[, 1]  &lt;- as.numeric(forecastedPortfolioReturns[, 1])
 
-forecastedPortfolioReturnsEqualWeights &lt;- t(read.csv(file=&quot;ForecastedPortfolioReturnsEqualWeights.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+forecastedPortfolioReturnsEqualWeights &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturnsEqualWeights.csv&quot;, header=TRUE, sep=&quot;,&quot;))
 forecastedPortfolioReturnsEqualWeights[, 1]  &lt;- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
 
-forecastedPortfolioReturnsSP500 &lt;- t(read.csv(file=&quot;ForecastedPortfolioReturnsSP500.csv&quot;, header=TRUE, sep=&quot;,&quot;))
+forecastedPortfolioReturnsSP500 &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturnsSP500.csv&quot;, header=TRUE, sep=&quot;,&quot;))
 forecastedPortfolioReturnsSP500[, 1]  &lt;- as.numeric(forecastedPortfolioReturnsSP500[, 1])
 
 forecastedPortfolioReturnsTS &lt;- ts(forecastedPortfolioReturns)

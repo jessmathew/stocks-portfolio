@@ -677,7 +677,7 @@ totalReturnsForEachForecastedPeriod
 write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\TESTForecastedPortfolioReturnsSP500.csv", row.names = FALSE)
 ```
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 options(scipen = 999)
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
 
@@ -702,18 +702,129 @@ legend("topleft", legend=c("Forecasted Portfolio (Optimized)", "Forecasted Portf
        col=c("red","green","blue"), lty=1, cex=1,bty="n")
 ```
 
+```{r eval=FALSE}
+options(scipen = 999)
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+
+k = .0005
+
+forecastedPortfolioReturns <- t(read.csv(file="ForecastedPROptimized.csv", header=TRUE, sep=","))
+forecastedPortfolioReturns[, 1]  <- as.numeric(forecastedPortfolioReturns[, 1])
+
+forecastedPortfolioReturnsEqualWeights <- t(read.csv(file="ForecastedPREqualWeights.csv", header=TRUE, sep=","))
+forecastedPortfolioReturnsEqualWeights[, 1]  <- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
+
+forecastedPortfolioReturnsSP500 <- t(read.csv(file="TESTForecastedPortfolioReturnsSP500.csv", header=TRUE, sep=","))
+forecastedPortfolioReturnsSP500[, 1]  <- as.numeric(forecastedPortfolioReturnsSP500[, 1])
+
+cumulativeForecastedPortfolioReturns <- cumsum(forecastedPortfolioReturns[, 1])
+cumulativeForecastedPortfolioReturnsEqualWeights <- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
+cumulativeForecastedPortfolioReturnsSP500 <- cumsum(forecastedPortfolioReturnsSP500[, 1])
+
+plot(cumulativeForecastedPortfolioReturns,type="l",col="red", lty=1, main = "Cumulative Returns Over Time", xlab = "Time", ylab = "Cumulative Returns")
+lines(cumulativeForecastedPortfolioReturnsEqualWeights,col="green", lty=1)
+lines(cumulativeForecastedPortfolioReturnsSP500,col="blue", lty=1)
+
+forecastedWeights <- t(read.csv(file="ForecastedWOptimized.csv", header=TRUE, sep=","))
+forecastedWeights[, 1]  <- as.numeric(forecastedWeights[, 1])
+forecastedPortfolioReturns <- 1+forecastedPortfolioReturns
+forecastedWeights <- (1-(k*forecastedWeights))
+forecastedPortfolioReturns <- (1-(forecastedWeights*forecastedPortfolioReturns))
+
+forecastedWeightsEqualWeights <- t(read.csv(file="ForecastedWEqualWeights.csv", header=TRUE, sep=","))
+forecastedWeightsEqualWeights[, 1]  <- as.numeric(forecastedWeightsEqualWeights[, 1])
+forecastedPortfolioReturnsEqualWeights <- 1+forecastedPortfolioReturnsEqualWeights
+forecastedWeightsEqualWeights <- (1-(k*forecastedWeightsEqualWeights))
+forecastedPortfolioReturnsEqualWeights <- (1-(forecastedWeightsEqualWeights*forecastedPortfolioReturnsEqualWeights))
+
+cumulativeForecastedPortfolioReturns <- cumsum(forecastedPortfolioReturns[, 1])
+cumulativeForecastedPortfolioReturnsEqualWeights <- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
+cumulativeForecastedPortfolioReturnsSP500 <- cumsum(forecastedPortfolioReturnsSP500[, 1])
+
+plot(cumulativeForecastedPortfolioReturns,type="l",col="red", lty=1, main = "Cumulative Returns Over Time (Transaction Consts)", xlab = "Time", ylab = "Cumulative Returns")
+lines(cumulativeForecastedPortfolioReturnsEqualWeights,col="green", lty=1)
+lines(cumulativeForecastedPortfolioReturnsSP500,col="blue", lty=1)
+
+legend("topleft", legend=c("Forecasted Portfolio (Optimized)", "Forecasted Portfolio (Equal Weights)", "S&P 500"),
+       col=c("red","green","blue"), lty=1, cex=1,bty="n")
+```
+
+```{r eval=TRUE}
+options(scipen = 999)
+setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+
+k = .0005
+forecastedWeights <- t(read.csv(file="ForecastedWOptimized.csv", header=TRUE, sep=","))
+
+forecastedPortfolioReturns <- t(read.csv(file="ForecastedPROptimized.csv", header=TRUE, sep=","))
+
+priorTotals <- as.data.frame(rowSums(forecastedPortfolioReturns))
+
+forecastedPortfolioReturns[,1] <- 1+forecastedPortfolioReturns[,1]
+forecastedPortfolioReturns <- as.data.frame(forecastedPortfolioReturns)
+forecastedWeights <- as.data.frame((1-(k*forecastedWeights)))
+
+forecastedPortfolioReturns[,1] <- forecastedPortfolioReturns[,1] * forecastedWeights[match(row.names(forecastedPortfolioReturns), row.names(forecastedWeights)), 1]
+forecastedPortfolioReturns[,1] <- forecastedPortfolioReturns[,1]-1
+
+forecastedPortfolioReturns <- as.data.frame(rowSums(forecastedPortfolioReturns))
+
+priorTotals
+forecastedPortfolioReturns
+
+
+forecastedPortfolioReturnsEqualWeights <- t(read.csv(file="ForecastedPREqualWeights.csv", header=TRUE, sep=","))
+forecastedPortfolioReturnsEqualWeights[, 1]  <- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
+
+forecastedPortfolioReturnsSP500 <- t(read.csv(file="TESTForecastedPortfolioReturnsSP500.csv", header=TRUE, sep=","))
+forecastedPortfolioReturnsSP500[, 1]  <- as.numeric(forecastedPortfolioReturnsSP500[, 1])
+
+cumulativeForecastedPortfolioReturns <- cumsum(forecastedPortfolioReturns[, 1])
+cumulativeForecastedPortfolioReturnsEqualWeights <- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
+cumulativeForecastedPortfolioReturnsSP500 <- cumsum(forecastedPortfolioReturnsSP500[, 1])
+
+plot(cumulativeForecastedPortfolioReturns,type="l",col="red", lty=1, main = "Cumulative Returns Over Time", xlab = "Time", ylab = "Cumulative Returns")
+lines(cumulativeForecastedPortfolioReturnsEqualWeights,col="green", lty=1)
+lines(cumulativeForecastedPortfolioReturnsSP500,col="blue", lty=1)
+
+
+
+# forecastedWeights <- t(read.csv(file="ForecastedWOptimized.csv", header=TRUE, sep=","))
+# forecastedWeights[, 1]  <- as.numeric(forecastedWeights[, 1])
+# forecastedPortfolioReturns <- 1+forecastedPortfolioReturns
+# forecastedWeights <- (1-(k*forecastedWeights))
+# forecastedPortfolioReturns <- (1-(forecastedWeights*forecastedPortfolioReturns))
+# 
+# forecastedWeightsEqualWeights <- t(read.csv(file="ForecastedWEqualWeights.csv", header=TRUE, sep=","))
+# forecastedWeightsEqualWeights[, 1]  <- as.numeric(forecastedWeightsEqualWeights[, 1])
+# forecastedPortfolioReturnsEqualWeights <- 1+forecastedPortfolioReturnsEqualWeights
+# forecastedWeightsEqualWeights <- (1-(k*forecastedWeightsEqualWeights))
+# forecastedPortfolioReturnsEqualWeights <- (1-(forecastedWeightsEqualWeights*forecastedPortfolioReturnsEqualWeights))
+# 
+# cumulativeForecastedPortfolioReturns <- cumsum(forecastedPortfolioReturns[, 1])
+# cumulativeForecastedPortfolioReturnsEqualWeights <- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
+# cumulativeForecastedPortfolioReturnsSP500 <- cumsum(forecastedPortfolioReturnsSP500[, 1])
+# 
+# plot(cumulativeForecastedPortfolioReturns,type="l",col="red", lty=1, main = "Cumulative Returns Over Time (Transaction Consts)", xlab = "Time", ylab = "Cumulative Returns")
+# lines(cumulativeForecastedPortfolioReturnsEqualWeights,col="green", lty=1)
+# lines(cumulativeForecastedPortfolioReturnsSP500,col="blue", lty=1)
+# 
+# legend("topleft", legend=c("Forecasted Portfolio (Optimized)", "Forecasted Portfolio (Equal Weights)", "S&P 500"),
+#        col=c("red","green","blue"), lty=1, cex=1,bty="n")
+```
+
 # Mean, Volatilty, Sharpe Ratio, Sortino Ratio, Maximum Drawdown, Turnover
 ```{r eval=FALSE}
 options(scipen = 999)
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
 
-forecastedPortfolioReturns <- t(read.csv(file="ForecastedPortfolioReturns.csv", header=TRUE, sep=","))
+forecastedPortfolioReturns <- t(read.csv(file="TESTForecastedPortfolioReturns.csv", header=TRUE, sep=","))
 forecastedPortfolioReturns[, 1]  <- as.numeric(forecastedPortfolioReturns[, 1])
 
-forecastedPortfolioReturnsEqualWeights <- t(read.csv(file="ForecastedPortfolioReturnsEqualWeights.csv", header=TRUE, sep=","))
+forecastedPortfolioReturnsEqualWeights <- t(read.csv(file="TESTForecastedPortfolioReturnsEqualWeights.csv", header=TRUE, sep=","))
 forecastedPortfolioReturnsEqualWeights[, 1]  <- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
 
-forecastedPortfolioReturnsSP500 <- t(read.csv(file="ForecastedPortfolioReturnsSP500.csv", header=TRUE, sep=","))
+forecastedPortfolioReturnsSP500 <- t(read.csv(file="TESTForecastedPortfolioReturnsSP500.csv", header=TRUE, sep=","))
 forecastedPortfolioReturnsSP500[, 1]  <- as.numeric(forecastedPortfolioReturnsSP500[, 1])
 
 forecastedPortfolioReturnsTS <- ts(forecastedPortfolioReturns)
