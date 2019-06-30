@@ -832,6 +832,8 @@ legend("topleft", legend=c("Optimized", "Optimized (Transaction Costs)", "Equal 
 
 ## Mean, Volatilty, Sharpe Ratio, Sortino Ratio, Maximum Drawdown, Turnover
 
+annualizationFactor <- sqrt(252)
+
 forecastedPortfolioReturnsTS <- ts(forecastedPortfolioReturns)
 forecastedPortfolioReturnsTransactionCostsTS <- ts(forecastedPortfolioReturnsTransactionCosts)
 forecastedPortfolioReturnsEqualWeightsTS <- ts(forecastedPortfolioReturnsEqualWeights)
@@ -851,6 +853,13 @@ meanForecastedPortfolioReturnsEqualWeights
 meanForecastedPortfolioReturnsEqualWeightsTransactionCosts
 meanForecastedPortfolioReturnsSP500
 
+# Annualized
+meanForecastedPortfolioReturns*annualizationFactor
+meanForecastedPortfolioReturnsTransactionCosts*annualizationFactor
+meanForecastedPortfolioReturnsEqualWeights*annualizationFactor
+meanForecastedPortfolioReturnsEqualWeightsTransactionCosts*annualizationFactor
+meanForecastedPortfolioReturnsSP500*annualizationFactor
+
 # Volatility
 sdForecastedPortfolioReturns <- sd(forecastedPortfolioReturns[,1])
 sdForecastedPortfolioReturnsTransactionCosts <- sd(forecastedPortfolioReturnsTransactionCosts[,1])
@@ -863,6 +872,13 @@ sdForecastedPortfolioReturnsTransactionCosts
 sdForecastedPortfolioReturnsEqualWeights
 sdForecastedPortfolioReturnsEqualWeightsTransactionCosts
 sdForecastedPortfolioReturnsSP500
+
+# Annualized
+sdForecastedPortfolioReturns*annualizationFactor
+sdForecastedPortfolioReturnsTransactionCosts*annualizationFactor
+sdForecastedPortfolioReturnsEqualWeights*annualizationFactor
+sdForecastedPortfolioReturnsEqualWeightsTransactionCosts*annualizationFactor
+sdForecastedPortfolioReturnsSP500*annualizationFactor
 
 # Sharpe Ratio
 sharpeRatioForecastedPortfolioReturns <- SharpeRatio(forecastedPortfolioReturnsTS, Rf = 0, FUN="StdDev")
@@ -877,6 +893,13 @@ sharpeRatioForecastedPortfolioReturnsEqualWeights
 sharpeRatioForecastedPortfolioReturnsEqualWeightsTransactionCosts
 sharpeRatioForecastedPortfolioReturnsSP500
 
+# Annualized
+sharpeRatioForecastedPortfolioReturns*annualizationFactor
+sharpeRatioForecastedPortfolioReturnsTransactionCosts*annualizationFactor
+sharpeRatioForecastedPortfolioReturnsEqualWeights*annualizationFactor
+sharpeRatioForecastedPortfolioReturnsEqualWeightsTransactionCosts*annualizationFactor
+sharpeRatioForecastedPortfolioReturnsSP500*annualizationFactor
+
 # Sortino Ratio
 sortinoRatioForecastedPortfolioReturns <- SortinoRatio(forecastedPortfolioReturnsTS, MAR = 0)
 sortinoRatioForecastedPortfolioReturnsTransactionCosts <- SortinoRatio(forecastedPortfolioReturnsTransactionCostsTS, MAR = 0)
@@ -889,6 +912,13 @@ sortinoRatioForecastedPortfolioReturnsTransactionCosts
 sortinoRatioForecastedPortfolioReturnsEqualWeights
 sortinoRatioForecastedPortfolioReturnsEqualWeightsTransactionCosts
 sortinoRatioForecastedPortfolioReturnsSP500
+
+# Annualized
+sortinoRatioForecastedPortfolioReturns*annualizationFactor
+sortinoRatioForecastedPortfolioReturnsTransactionCosts*annualizationFactor
+sortinoRatioForecastedPortfolioReturnsEqualWeights*annualizationFactor
+sortinoRatioForecastedPortfolioReturnsEqualWeightsTransactionCosts*annualizationFactor
+sortinoRatioForecastedPortfolioReturnsSP500*annualizationFactor
 
 #Maximum Drawdown
 maximumDrawdownForecastedPortfolioReturns <- maxDrawdown(forecastedPortfolioReturnsTS)
@@ -903,6 +933,13 @@ maximumDrawdownForecastedPortfolioReturnsEqualWeights
 maximumDrawdownForecastedPortfolioReturnsEqualWeightsTransactionCosts
 maximumDrawdownForecastedPortfolioReturnsSP500
 
+# Annualized
+maximumDrawdownForecastedPortfolioReturns*annualizationFactor
+maximumDrawdownForecastedPortfolioReturnsTransactionCosts*annualizationFactor
+maximumDrawdownForecastedPortfolioReturnsEqualWeights*annualizationFactor
+maximumDrawdownForecastedPortfolioReturnsEqualWeightsTransactionCosts*annualizationFactor
+maximumDrawdownForecastedPortfolioReturnsSP500*annualizationFactor
+
 #Turnover
 forecastedWeightsForTurnoverCalculations <- ts(forecastedWeightsForTurnoverCalculations)
 turnoverOptimized <- mean(as.data.frame(abs(percentChange(forecastedWeightsForTurnoverCalculations) / 100))[-1,1])
@@ -912,4 +949,8 @@ turnoverEqualWeights <- mean(as.data.frame(abs(percentChange(forecastedWeightsEq
 
 turnoverOptimized
 turnoverEqualWeights
+
+# Annualized
+turnoverOptimized*annualizationFactor
+turnoverEqualWeights*annualizationFactor
 ```

@@ -260,22 +260,6 @@ library(quantmod)</code></pre>
 <pre><code>## The following objects are masked from 'package:purrr':
 ## 
 ##     accumulate, when</code></pre>
-<pre class="r"><code>library(ROI)</code></pre>
-<pre><code>## Warning: package 'ROI' was built under R version 3.5.3</code></pre>
-<pre><code>## ROI: R Optimization Infrastructure</code></pre>
-<pre><code>## Registered solver plugins: nlminb, glpk, quadprog, symphony.</code></pre>
-<pre><code>## Default solver: auto.</code></pre>
-<pre><code>## 
-## Attaching package: 'ROI'</code></pre>
-<pre><code>## The following objects are masked from 'package:PortfolioAnalytics':
-## 
-##     is.constraint, objective</code></pre>
-<pre class="r"><code>library(ROI.plugin.glpk)</code></pre>
-<pre><code>## Warning: package 'ROI.plugin.glpk' was built under R version 3.5.3</code></pre>
-<pre class="r"><code>library(ROI.plugin.quadprog)</code></pre>
-<pre><code>## Warning: package 'ROI.plugin.quadprog' was built under R version 3.5.3</code></pre>
-<pre class="r"><code>library(ROI.plugin.symphony)</code></pre>
-<pre><code>## Warning: package 'ROI.plugin.symphony' was built under R version 3.5.3</code></pre>
 <pre class="r"><code>library(tsbox)</code></pre>
 <pre><code>## Warning: package 'tsbox' was built under R version 3.5.3</code></pre>
 <pre class="r"><code>library(reshape2)</code></pre>
@@ -294,6 +278,25 @@ library(quantmod)</code></pre>
 <pre><code>## The following object is masked from 'package:purrr':
 ## 
 ##     splice</code></pre>
+<pre class="r"><code>library(MASS)</code></pre>
+<pre><code>## Warning: package 'MASS' was built under R version 3.5.3</code></pre>
+<pre><code>## 
+## Attaching package: 'MASS'</code></pre>
+<pre><code>## The following object is masked from 'package:dplyr':
+## 
+##     select</code></pre>
+<pre class="r"><code>library(quadprog)</code></pre>
+<pre><code>## Warning: package 'quadprog' was built under R version 3.5.3</code></pre>
+<pre class="r"><code>library(matrixcalc)
+library(Matrix)</code></pre>
+<pre><code>## Warning: package 'Matrix' was built under R version 3.5.3</code></pre>
+<pre><code>## 
+## Attaching package: 'Matrix'</code></pre>
+<pre><code>## The following object is masked from 'package:tidyr':
+## 
+##     expand</code></pre>
+<pre class="r"><code>library(BLCOP)</code></pre>
+<pre><code>## Warning: package 'BLCOP' was built under R version 3.5.3</code></pre>
 </div>
 <div id="merge-all-the-individual-files-together-to-create-two-datasets.-1-date-and-adjusted-close-price-2-date-and-volume" class="section level1">
 <h1>Merge all the individual files together to create two datasets. (1) Date and Adjusted Close Price (2) Date and Volume</h1>
@@ -463,23 +466,19 @@ write.csv(fullLogAssetData,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia
 setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
 fittedFullLogAssetData &lt;- read.csv(file=&quot;FullLogStockAssetDataFittedForOutliers.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3906)))[-1,]
 
-justTesting &lt;- as.data.frame(colMeans(fittedFullLogAssetData[,-1]))
-
-count(colSums(justTesting) &lt; 0)
-count(colSums(justTesting) &gt;= 0)
-
 numberOfRows &lt;- nrow(fittedFullLogAssetData)
 numberOfColumns &lt;- ncol(fittedFullLogAssetData)
 
 h &lt;- 5
 m &lt;- 252
 
-# breakingCondition &lt;- numberOfRows + h
-
 index &lt;- 0
 
 stockIndexesForFirstLoop &lt;- seq(2,numberOfColumns)
 listOftotalReturnsForEachForecastedPeriod &lt;- list()
+listOfTotalWeightChangeForEachForecastedPeriod &lt;- list()
+
+weightsForPortfolioLastIteration &lt;- data.frame()
 while (TRUE)
 {
   print(&quot;While loop index&quot;)
@@ -494,22 +493,39 @@ while (TRUE)
   
   #Sharpe Ratio Filtering
   sharpeRatiosWithStockIndex &lt;- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
-  
+
   for (stockIndexForFirstLoop in stockIndexesForFirstLoop)
   {
     currentAssetDataForStockIndex &lt;- assetsDataForCurrentTimePeriod[,c(1,stockIndexForFirstLoop)]
     columnName &lt;- colnames(currentAssetDataForStockIndex)[2]
     sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] &lt;- c(columnName, (mean(currentAssetDataForStockIndex[,2]))/(sd(currentAssetDataForStockIndex[,2])))
   }
-  
+
   stockNamesWithHighestSharpeRatios &lt;- sharpeRatiosWithStockIndex %&gt;% arrange(desc(SharpeRatio))
   stockNamesWithHighestSharpeRatios &lt;- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
-  
+
   stocksWithHighestSharpeRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
+
+  #Sortino Ratio Filtering
+  sortinoRatiosWithStockIndex &lt;- data.frame(Stock=character(), SortinoRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
+
+  for (stockIndexForFirstLoopTest in seq(2:ncol(stocksWithHighestSharpeRatios)))
+  {
+    currentAssetDataForStockIndex &lt;- stocksWithHighestSharpeRatios[,c(1,stockIndexForFirstLoopTest)]
+    columnName &lt;- colnames(currentAssetDataForStockIndex)[2]
+
+    justTesting &lt;- currentAssetDataForStockIndex[,2]
+    sortinoRatiosWithStockIndex[nrow(sortinoRatiosWithStockIndex)+1, ] &lt;- c(columnName, (mean(justTesting))/(sd(justTesting[justTesting&lt;0])))
+  }
+
+  stockNamesWithHighestSortinoRatios &lt;- sortinoRatiosWithStockIndex %&gt;% arrange(desc(SortinoRatio))
+  stockNamesWithHighestSortinoRatios &lt;- data.frame(head(stockNamesWithHighestSortinoRatios, 40))
+
+  stocksWithHighestSortinoRatios &lt;- subset(stocksWithHighestSharpeRatios, select=gsub(&quot;.1&quot;, &quot;&quot;, stockNamesWithHighestSortinoRatios[,1]))
   
   #Correlation Filtering
-  correlationBetweenTheStocks &lt;- stocksWithHighestSharpeRatios %&gt;% correlate(use = &quot;everything&quot;) %&gt;% stretch() %&gt;% arrange(abs(r))
-  
+  correlationBetweenTheStocks &lt;- stocksWithHighestSortinoRatios %&gt;% correlate(use = &quot;everything&quot;) %&gt;% stretch() %&gt;% arrange(abs(r))
+
   namesOfLowlyCorrelatedStocks &lt;- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %&gt;% unique()
   namesOfLowlyCorrelatedStocks &lt;- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
   
@@ -518,24 +534,32 @@ while (TRUE)
   stocksToUseForModelingXTS &lt;- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
   
   stockIndexesForSecondLoop &lt;- seq(1:ncol(stocksToUseForModeling))
+  actualLogReturnsForStocksList = list()
   forecastedLogReturnsForStocksList = list()
   
   for(stockIndexForSecondLoop in stockIndexesForSecondLoop) {
     print(&quot;Second loop index&quot;)
     print(stockIndexForSecondLoop)
     currentStock &lt;- stocksToUseForModeling[stockIndexForSecondLoop]
-
+    
     columnName &lt;- colnames(currentStock)
     
     currentStockTS &lt;- ts(currentStock)
     currentStockTSFitted &lt;- auto.arima(currentStockTS)
     currentStockForecasted &lt;- forecast(currentStockTSFitted,h=h)$mean
-    # forcastedLogReturnsForCurrentStock &lt;- as.data.frame(currentStockForecasted)
-    forcastedLogReturnsForCurrentStock &lt;- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
     
+    actualLogReturnsForCurrentStock &lt;- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
+    forcastedLogReturnsForCurrentStock &lt;- as.data.frame(currentStockForecasted)
+    
+    colnames(actualLogReturnsForCurrentStock)[colnames(actualLogReturnsForCurrentStock)==&quot;assetsDataForForecastedTimePeriod[, columnName]&quot;] &lt;- columnName
     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
+    
+    actualLogReturnsForStocksList[[stockIndexForSecondLoop]] &lt;- actualLogReturnsForCurrentStock
     forecastedLogReturnsForStocksList[[stockIndexForSecondLoop]] &lt;- forcastedLogReturnsForCurrentStock
   }
+  
+  actualLogReturnsForStocks &lt;- dplyr::bind_cols(actualLogReturnsForStocksList)
+  actualLogReturnsForStocks &lt;- as.matrix.data.frame(actualLogReturnsForStocks)
   
   forecastedLogReturnsForStocks &lt;- dplyr::bind_cols(forecastedLogReturnsForStocksList)
   forecastedLogReturnsForStocks &lt;- as.matrix.data.frame(forecastedLogReturnsForStocks)
@@ -543,36 +567,21 @@ while (TRUE)
   tickers &lt;- colnames(stocksToUseForModeling)
   
   # Black Litterman Model for Portfolio Optimization
-  meanReturns &lt;- colMeans(stocksToUseForModeling)
-  covMat &lt;- cov(stocksToUseForModeling)
   
-  q &lt;- matrix(c(0.041,0.016,0.008),3,1)
-  P &lt;- matrix(c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,-1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,-1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 ), 3, 30, byrow = TRUE)
-  sigma &lt;- matrix(c(0.000801,0,0, 0,0.009546,0, 0,0,0.000884), 3,3, byrow = TRUE)
-  tau = 0.025
-  pi &lt;- as.matrix(meanReturns)
+  meanReturnsOriginal &lt;- as.matrix(colMeans(stocksToUseForModeling))
+  covMatOriginal &lt;- cov(stocksToUseForModeling)
+
+  meanReturnsForecasted &lt;- as.matrix(colMeans(forecastedLogReturnsForStocks))
+  covMatForecasted &lt;- cov(forecastedLogReturnsForStocks)
   
-  #Calculating the first term in BL method(Sum of weights = 1)
-  tau_cov= tau*covMat
-  weight_1 = ginv(tau_cov)
-  P_transpose = t(P)
-  sigma_inv = ginv(sigma)
-  weight_2 &lt;- P_transpose %*% sigma_inv %*% P
-  first_term_before_inv = weight_1 + weight_2
-  first_term = ginv(first_term_before_inv)
+  tau &lt;- 1.0
   
-  #Calculating the second term in BL method(Sum of weighted Pi and Q)
-  pi_component = weight_1 %*% pi
-  q_component = P_transpose %*% sigma_inv %*% q
-  second_term = pi_component + q_component
+  meanReturns &lt;- ginv(ginv((tau*covMatOriginal)) + ginv(covMatForecasted)) %*% ((ginv(tau*covMatOriginal) %*% meanReturnsOriginal) + (ginv(covMatForecasted) %*% meanReturnsForecasted))
+  covMat &lt;- ginv(ginv(tau*covMatOriginal)+ginv(covMatForecasted))
   
-  #Final BL matrix
-  BL_matrix = first_term %*% second_term
-  
-  #Define the QP
-  Dmat_BL &lt;- 2*covMat
+  Dmat_BL &lt;- covMat
   dvec_BL &lt;- rep(0,30)
-  Amat_BL &lt;- matrix(c(BL_matrix,-BL_matrix,rep(1,30),rep(-1,30),diag(length(BL_matrix))),30,12)
+  Amat_BL &lt;- matrix(c(meanReturns,-meanReturns,rep(1,30),rep(-1,30),diag(length(meanReturns))),30,12)
   
   # compute efficient frontier for eight stocks
   varP_BL=vector()
@@ -616,7 +625,7 @@ while (TRUE)
   for (i in 1:length(Rvals_BL)) {
     R=Rvals_BL[i]
     bvec_BL &lt;- c(R,-R,1,-1,0,0,0,0,0,0,0,0)
-    qpSol_BL=solve.QP(Dmat_BL/10^6,dvec_BL/10^6,Amat_BL,bvec_BL, meq=0)
+    qpSol_BL=solve.QP((nearPD(Dmat_BL)$mat)/10^6,dvec_BL/10^6,Amat_BL,bvec_BL, meq=0)
     varP_BL[i]=qpSol_BL$value
     sigmaP_BL[i]=sqrt(varP_BL[i])
     w1_BL[i]=qpSol_BL$solution[1];
@@ -654,25 +663,42 @@ while (TRUE)
   #Portfolio weights
   weightsoutput&lt;-data.frame(w1_BL,w2_BL,w3_BL,w4_BL,w5_BL,w6_BL,w7_BL,w8_BL,w9_BL,w10_BL,w11_BL,w12_BL,w13_BL,w14_BL,w15_BL,w16_BL,w17_BL,w18_BL,w19_BL,w20_BL,w21_BL,w22_BL,w23_BL,w24_BL,w25_BL,w26_BL,w27_BL,w28_BL,w29_BL,w30_BL)
   
-  weightsAverage &lt;- as.data.frame(colMeans(weightsoutput))
+  weightsForPortfolioThisIteration &lt;- as.data.frame(colMeans(weightsoutput))
   
-  # print(dim(weightsAverage))
+  weightsRowNames &lt;- as.data.frame(tickers)
   
+  for (weightsRowIndex in seq(1:nrow(weightsRowNames)))
+  {
+    rownames(weightsForPortfolioThisIteration)[weightsRowIndex] &lt;- as.character(weightsRowNames[weightsRowIndex,1])
+  }
   
-  columnSumsOfStocksToUseForModeling &lt;- as.data.frame(colSums(stocksToUseForModeling))
-  weightsForPortfolio &lt;- as.data.frame(sweep(columnSumsOfStocksToUseForModeling,2,colSums(columnSumsOfStocksToUseForModeling),`/`))
+  mergedWeightDataFrame &lt;- merge(weightsForPortfolioLastIteration,weightsForPortfolioThisIteration, by=&quot;row.names&quot;, all = TRUE)
+  mergedWeightDataFrame[is.na(mergedWeightDataFrame)] &lt;- 0
   
-  print(dim(forecastedLogReturnsForStocks))
-  print(dim(weightsAverage))
+  absoluteDifferenceBetweenColumns &lt;- as.double()
+  if (index&gt;0)
+  {
+    absoluteDifferenceBetweenColumns &lt;- sum(abs(mergedWeightDataFrame[,2] - mergedWeightDataFrame[,3]))
+  }
+  else
+  {
+    absoluteDifferenceBetweenColumns &lt;- 0
+  }
+  listOfTotalWeightChangeForEachForecastedPeriod[[index+1]] &lt;- absoluteDifferenceBetweenColumns
   
-  totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsAverage)
+  weightsForPortfolioLastIteration &lt;- weightsForPortfolioThisIteration
+  
+  print(weightsForPortfolioThisIteration)
+  print(colSums(as.data.frame(weightsForPortfolioThisIteration)))
+  
+  totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(actualLogReturnsForStocks) %*% as.matrix(weightsForPortfolioThisIteration)
   
   totalReturnForTheForecastingWindow &lt;- unname(colSums(totalReturnsForTheForecastingWindowByDay))
-  listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnForTheForecastingWindow
+  listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnsForTheForecastingWindowByDay
   
   index &lt;- index + 1
-  if (index == 455)
-  # if (endRow &gt; 257)
+  if (index == 453)
+    # if (endRow &gt; 257)
   {
     break
   }
@@ -683,7 +709,13 @@ totalReturnsForEachForecastedPeriod &lt;- as.data.frame(totalReturnsForEachForec
 
 totalReturnsForEachForecastedPeriod
 
-write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\TESTForecastedPortfolioReturns.csv&quot;, row.names = FALSE)</code></pre>
+totalWeightChangesForEachForecastedPeriod &lt;- dplyr::bind_cols(listOfTotalWeightChangeForEachForecastedPeriod)
+totalWeightChangesForEachForecastedPeriod &lt;- as.data.frame(totalWeightChangesForEachForecastedPeriod)
+
+totalWeightChangesForEachForecastedPeriod
+
+write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPROptimized.csv&quot;, row.names = FALSE)
+write.csv(totalWeightChangesForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedWOptimized.csv&quot;, row.names = FALSE)</code></pre>
 </div>
 <div id="portfolio-optimization-with-equal-weights" class="section level1">
 <h1>Portfolio Optimization with Equal Weights</h1>
@@ -691,23 +723,19 @@ write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\
 setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
 fittedFullLogAssetData &lt;- read.csv(file=&quot;FullLogStockAssetDataFittedForOutliers.csv&quot;, header=TRUE, sep=&quot;,&quot;, colClasses=c(&quot;Date&quot;,rep(&quot;numeric&quot;,3906)))[-1,]
 
-justTesting &lt;- as.data.frame(colMeans(fittedFullLogAssetData[,-1]))
-
-count(colSums(justTesting) &lt; 0)
-count(colSums(justTesting) &gt;= 0)
-
 numberOfRows &lt;- nrow(fittedFullLogAssetData)
 numberOfColumns &lt;- ncol(fittedFullLogAssetData)
 
 h &lt;- 5
 m &lt;- 252
 
-# breakingCondition &lt;- numberOfRows + h
-
 index &lt;- 0
 
 stockIndexesForFirstLoop &lt;- seq(2,numberOfColumns)
 listOftotalReturnsForEachForecastedPeriod &lt;- list()
+listOfTotalWeightChangeForEachForecastedPeriod &lt;- list()
+
+weightsForPortfolioLastIteration &lt;- data.frame()
 while (TRUE)
 {
   print(&quot;While loop index&quot;)
@@ -735,8 +763,42 @@ while (TRUE)
   
   stocksWithHighestSharpeRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
   
+  #Sortino Ratio Filtering
+  sortinoRatiosWithStockIndex &lt;- data.frame(Stock=character(), SortinoRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
+  
+  for (stockIndexForFirstLoopTest in seq(2:ncol(stocksWithHighestSharpeRatios)))
+  {
+    currentAssetDataForStockIndex &lt;- stocksWithHighestSharpeRatios[,c(1,stockIndexForFirstLoopTest)]
+    columnName &lt;- colnames(currentAssetDataForStockIndex)[2]
+    
+    justTesting &lt;- currentAssetDataForStockIndex[,2]
+    sortinoRatiosWithStockIndex[nrow(sortinoRatiosWithStockIndex)+1, ] &lt;- c(columnName, (mean(justTesting))/(sd(justTesting[justTesting&lt;0])))
+  }
+  
+  stockNamesWithHighestSortinoRatios &lt;- sortinoRatiosWithStockIndex %&gt;% arrange(desc(SortinoRatio))
+  stockNamesWithHighestSortinoRatios &lt;- data.frame(head(stockNamesWithHighestSortinoRatios, 40))
+  
+  stocksWithHighestSortinoRatios &lt;- subset(stocksWithHighestSharpeRatios, select=gsub(&quot;.1&quot;, &quot;&quot;, stockNamesWithHighestSortinoRatios[,1]))
+  
+  # #Sortino Ratio Filtering TEST
+  # sortinoRatiosWithStockIndex &lt;- data.frame(Stock=character(), SortinoRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
+  # 
+  # for (stockIndexForFirstLoop in stockIndexesForFirstLoop)
+  # {
+  #   currentAssetDataForStockIndex &lt;- assetsDataForCurrentTimePeriod[,c(1,stockIndexForFirstLoop)]
+  #   columnName &lt;- colnames(currentAssetDataForStockIndex)[2]
+  # 
+  #   justTesting &lt;- currentAssetDataForStockIndex[,2]
+  #   sortinoRatiosWithStockIndex[nrow(sortinoRatiosWithStockIndex)+1, ] &lt;- c(columnName, (mean(justTesting))/(sd(justTesting[justTesting&lt;0])))
+  # }
+  # 
+  # stockNamesWithHighestSortinoRatios &lt;- sortinoRatiosWithStockIndex %&gt;% arrange(desc(SortinoRatio))
+  # stockNamesWithHighestSortinoRatios &lt;- data.frame(head(stockNamesWithHighestSortinoRatios, 30))
+  # 
+  # stocksWithHighestSortinoRatios &lt;- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSortinoRatios[,1])
+  
   #Correlation Filtering
-  correlationBetweenTheStocks &lt;- stocksWithHighestSharpeRatios %&gt;% correlate(use = &quot;everything&quot;) %&gt;% stretch() %&gt;% arrange(abs(r))
+  correlationBetweenTheStocks &lt;- stocksWithHighestSortinoRatios %&gt;% correlate(use = &quot;everything&quot;) %&gt;% stretch() %&gt;% arrange(abs(r))
   
   namesOfLowlyCorrelatedStocks &lt;- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %&gt;% unique()
   namesOfLowlyCorrelatedStocks &lt;- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
@@ -758,10 +820,9 @@ while (TRUE)
     currentStockTS &lt;- ts(currentStock)
     currentStockTSFitted &lt;- auto.arima(currentStockTS)
     currentStockForecasted &lt;- forecast(currentStockTSFitted,h=h)$mean
-    # forcastedLogReturnsForCurrentStock &lt;- as.data.frame(currentStockForecasted)
     forcastedLogReturnsForCurrentStock &lt;- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
     
-    colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
+    colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;assetsDataForForecastedTimePeriod[, columnName]&quot;] &lt;- columnName
     forecastedLogReturnsForStocksList[[stockIndexForSecondLoop]] &lt;- forcastedLogReturnsForCurrentStock
   }
   
@@ -770,20 +831,44 @@ while (TRUE)
   
   tickers &lt;- colnames(stocksToUseForModeling)
   
-  # Black Litterman Model for Portfolio Optimization
-  meanReturns &lt;- colMeans(stocksToUseForModeling)
-  covMat &lt;- cov(stocksToUseForModeling)
+  # Equal Weights for Portfolio Optimization
   
-  weightsForPortfolio &lt;- data.frame(matrix(ncol = 1, nrow = 30))
-  weightsForPortfolio[] &lt;- 1/30
+  weightsForPortfolioThisIteration &lt;- data.frame(matrix(ncol = 1, nrow = 30))
+  weightsForPortfolioThisIteration[] &lt;- 1/30
   
-  totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
+  weightsRowNames &lt;- as.data.frame(tickers)
+  
+  for (weightsRowIndex in seq(1:nrow(weightsRowNames)))
+  {
+    rownames(weightsForPortfolioThisIteration)[weightsRowIndex] &lt;- as.character(weightsRowNames[weightsRowIndex,1])
+  }
+  
+  mergedWeightDataFrame &lt;- merge(weightsForPortfolioLastIteration,weightsForPortfolioThisIteration, by=&quot;row.names&quot;, all = TRUE)
+  mergedWeightDataFrame[is.na(mergedWeightDataFrame)] &lt;- 0
+  
+  absoluteDifferenceBetweenColumns &lt;- as.double()
+  if (index&gt;0)
+  {
+    absoluteDifferenceBetweenColumns &lt;- sum(abs(mergedWeightDataFrame[,2] - mergedWeightDataFrame[,3]))
+  }
+  else
+  {
+    absoluteDifferenceBetweenColumns &lt;- 0
+  }
+  listOfTotalWeightChangeForEachForecastedPeriod[[index+1]] &lt;- absoluteDifferenceBetweenColumns
+  
+  weightsForPortfolioLastIteration &lt;- weightsForPortfolioThisIteration
+  
+  print(weightsForPortfolioThisIteration)
+  print(colSums(as.data.frame(weightsForPortfolioThisIteration)))
+  
+  totalReturnsForTheForecastingWindowByDay &lt;- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolioThisIteration)
   
   totalReturnForTheForecastingWindow &lt;- unname(colSums(totalReturnsForTheForecastingWindowByDay))
-  listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnForTheForecastingWindow
+  listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnsForTheForecastingWindowByDay
   
   index &lt;- index + 1
-  if (index == 455)
+  if (index == 453)
     # if (endRow &gt; 257)
   {
     break
@@ -795,7 +880,13 @@ totalReturnsForEachForecastedPeriod &lt;- as.data.frame(totalReturnsForEachForec
 
 totalReturnsForEachForecastedPeriod
 
-write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\TESTForecastedPortfolioReturnsEqualWeights.csv&quot;, row.names = FALSE)</code></pre>
+totalWeightChangesForEachForecastedPeriod &lt;- dplyr::bind_cols(listOfTotalWeightChangeForEachForecastedPeriod)
+totalWeightChangesForEachForecastedPeriod &lt;- as.data.frame(totalWeightChangesForEachForecastedPeriod)
+
+totalWeightChangesForEachForecastedPeriod
+
+write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPREqualWeights.csv&quot;, row.names = FALSE)
+write.csv(totalWeightChangesForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedWEqualWeights.csv&quot;, row.names = FALSE)</code></pre>
 </div>
 <div id="portfolio-optimization-for-sp500" class="section level1">
 <h1>Portfolio Optimization for S&amp;P500</h1>
@@ -888,7 +979,6 @@ while (TRUE)
     currentStockTS &lt;- ts(currentStock)
     currentStockTSFitted &lt;- auto.arima(currentStockTS)
     currentStockForecasted &lt;- forecast(currentStockTSFitted,h=h)$mean
-    # forcastedLogReturnsForCurrentStock &lt;- as.data.frame(currentStockForecasted)
     forcastedLogReturnsForCurrentStock &lt;- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
     
     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)==&quot;x&quot;] &lt;- columnName
@@ -904,7 +994,6 @@ while (TRUE)
   covMat &lt;- cov(stocksToUseForModeling)
   
   columnSumsOfStocksToUseForModeling &lt;- as.data.frame(colSums(stocksToUseForModeling))
-  # weightsForPortfolio &lt;- as.data.frame(sweep(columnSumsOfStocksToUseForModeling,2,colSums(columnSumsOfStocksToUseForModeling),`/`))
   
   weightsForPortfolio &lt;- data.frame(matrix(ncol = 1, nrow = 30))
   weightsForPortfolio[] &lt;- 1/30
@@ -915,7 +1004,7 @@ while (TRUE)
   listOftotalReturnsForEachForecastedPeriod[[index+1]] &lt;- totalReturnForTheForecastingWindow
   
   index &lt;- index + 1
-  if (index == 455)
+  if (index == 453)
     # if (endRow &gt; 257)
   {
     break
@@ -927,29 +1016,7 @@ totalReturnsForEachForecastedPeriod &lt;- as.data.frame(totalReturnsForEachForec
 
 totalReturnsForEachForecastedPeriod
 
-write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\TESTForecastedPortfolioReturnsSP500.csv&quot;, row.names = FALSE)</code></pre>
-<pre class="r"><code>options(scipen = 999)
-setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
-
-forecastedPortfolioReturns &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturns.csv&quot;, header=TRUE, sep=&quot;,&quot;))
-forecastedPortfolioReturns[, 1]  &lt;- as.numeric(forecastedPortfolioReturns[, 1])
-
-forecastedPortfolioReturnsEqualWeights &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturnsEqualWeights.csv&quot;, header=TRUE, sep=&quot;,&quot;))
-forecastedPortfolioReturnsEqualWeights[, 1]  &lt;- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
-
-forecastedPortfolioReturnsSP500 &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturnsSP500.csv&quot;, header=TRUE, sep=&quot;,&quot;))
-forecastedPortfolioReturnsSP500[, 1]  &lt;- as.numeric(forecastedPortfolioReturnsSP500[, 1])
-
-cumulativeForecastedPortfolioReturns &lt;- cumsum(forecastedPortfolioReturns[, 1])
-cumulativeForecastedPortfolioReturnsEqualWeights &lt;- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
-cumulativeForecastedPortfolioReturnsSP500 &lt;- cumsum(forecastedPortfolioReturnsSP500[, 1])
-
-plot(cumulativeForecastedPortfolioReturns,type=&quot;l&quot;,col=&quot;red&quot;, lty=1, main = &quot;Cumulative Returns Over Time&quot;, xlab = &quot;Time&quot;, ylab = &quot;Cumulative Returns&quot;)
-lines(cumulativeForecastedPortfolioReturnsEqualWeights,col=&quot;green&quot;, lty=1)
-lines(cumulativeForecastedPortfolioReturnsSP500,col=&quot;blue&quot;, lty=1)
-
-legend(&quot;topleft&quot;, legend=c(&quot;Forecasted Portfolio (Optimized)&quot;, &quot;Forecasted Portfolio (Equal Weights)&quot;, &quot;S&amp;P 500&quot;),
-       col=c(&quot;red&quot;,&quot;green&quot;,&quot;blue&quot;), lty=1, cex=1,bty=&quot;n&quot;)</code></pre>
+write.csv(totalReturnsForEachForecastedPeriod,&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPRSP500.csv&quot;, row.names = FALSE)</code></pre>
 <pre class="r"><code>options(scipen = 999)
 setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
 
@@ -1007,9 +1074,7 @@ cumulativeForecastedPortfolioReturnsEqualWeights &lt;- ts(cumsum(forecastedPortf
 cumulativeForecastedPortfolioReturnsEqualWeightsTransactionCosts &lt;- ts(cumsum(forecastedPortfolioReturnsEqualWeightsTransactionCosts[, 1]))
 cumulativeForecastedPortfolioReturnsSP500 &lt;- ts(cumsum(forecastedPortfolioReturnsSP500[, 1]))
 
-# finalPlot &lt;- ts.plot(cumulativeForecastedPortfolioReturnsEqualWeights, cumulativeForecastedPortfolioReturnsEqualWeightsTransactionCosts, cumulativeForecastedPortfolioReturnsSP500, gpars=list(col=c(&quot;blue&quot;,&quot;green&quot;,&quot;black&quot;)))
-# 
-# finalPlot &lt;- ts.plot(cumulativeForecastedPortfolioReturns, cumulativeForecastedPortfolioReturnsTransactionCosts,cumulativeForecastedPortfolioReturnsSP500, gpars=list(col=c(&quot;red&quot;,&quot;orange&quot;,&quot;black&quot;)))
+## Plot
 
 finalPlot &lt;- ts.plot(cumulativeForecastedPortfolioReturns, cumulativeForecastedPortfolioReturnsTransactionCosts, cumulativeForecastedPortfolioReturnsEqualWeights, cumulativeForecastedPortfolioReturnsEqualWeightsTransactionCosts, cumulativeForecastedPortfolioReturnsSP500, gpars=list(col=c(&quot;red&quot;,&quot;orange&quot;,&quot;blue&quot;,&quot;green&quot;,&quot;black&quot;)))
 
@@ -1017,6 +1082,8 @@ legend(&quot;topleft&quot;, legend=c(&quot;Optimized&quot;, &quot;Optimized (Tra
        col=c(&quot;red&quot;,&quot;orange&quot;,&quot;blue&quot;,&quot;green&quot;,&quot;black&quot;), lty=1, cex=1,bty=&quot;n&quot;)</code></pre>
 <p><img src="data:image/png;base64,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" width="672" /></p>
 <pre class="r"><code>## Mean, Volatilty, Sharpe Ratio, Sortino Ratio, Maximum Drawdown, Turnover
+
+annualizationFactor &lt;- sqrt(252)
 
 forecastedPortfolioReturnsTS &lt;- ts(forecastedPortfolioReturns)
 forecastedPortfolioReturnsTransactionCostsTS &lt;- ts(forecastedPortfolioReturnsTransactionCosts)
@@ -1041,6 +1108,17 @@ meanForecastedPortfolioReturns</code></pre>
 <pre><code>## [1] 0.001764988</code></pre>
 <pre class="r"><code>meanForecastedPortfolioReturnsSP500</code></pre>
 <pre><code>## [1] 0.002122294</code></pre>
+<pre class="r"><code># Annualized
+meanForecastedPortfolioReturns*annualizationFactor</code></pre>
+<pre><code>## [1] 0.0393443</code></pre>
+<pre class="r"><code>meanForecastedPortfolioReturnsTransactionCosts*annualizationFactor</code></pre>
+<pre><code>## [1] 0.01510652</code></pre>
+<pre class="r"><code>meanForecastedPortfolioReturnsEqualWeights*annualizationFactor</code></pre>
+<pre><code>## [1] 0.03303638</code></pre>
+<pre class="r"><code>meanForecastedPortfolioReturnsEqualWeightsTransactionCosts*annualizationFactor</code></pre>
+<pre><code>## [1] 0.02801831</code></pre>
+<pre class="r"><code>meanForecastedPortfolioReturnsSP500*annualizationFactor</code></pre>
+<pre><code>## [1] 0.03369038</code></pre>
 <pre class="r"><code># Volatility
 sdForecastedPortfolioReturns &lt;- sd(forecastedPortfolioReturns[,1])
 sdForecastedPortfolioReturnsTransactionCosts &lt;- sd(forecastedPortfolioReturnsTransactionCosts[,1])
@@ -1058,6 +1136,17 @@ sdForecastedPortfolioReturns</code></pre>
 <pre><code>## [1] 0.0153245</code></pre>
 <pre class="r"><code>sdForecastedPortfolioReturnsSP500</code></pre>
 <pre><code>## [1] 0.02107802</code></pre>
+<pre class="r"><code># Annualized
+sdForecastedPortfolioReturns*annualizationFactor</code></pre>
+<pre><code>## [1] 0.3038219</code></pre>
+<pre class="r"><code>sdForecastedPortfolioReturnsTransactionCosts*annualizationFactor</code></pre>
+<pre><code>## [1] 0.3030839</code></pre>
+<pre class="r"><code>sdForecastedPortfolioReturnsEqualWeights*annualizationFactor</code></pre>
+<pre><code>## [1] 0.2433401</code></pre>
+<pre class="r"><code>sdForecastedPortfolioReturnsEqualWeightsTransactionCosts*annualizationFactor</code></pre>
+<pre><code>## [1] 0.2432689</code></pre>
+<pre class="r"><code>sdForecastedPortfolioReturnsSP500*annualizationFactor</code></pre>
+<pre><code>## [1] 0.3346032</code></pre>
 <pre class="r"><code># Sharpe Ratio
 sharpeRatioForecastedPortfolioReturns &lt;- SharpeRatio(forecastedPortfolioReturnsTS, Rf = 0, FUN=&quot;StdDev&quot;)
 sharpeRatioForecastedPortfolioReturnsTransactionCosts &lt;- SharpeRatio(forecastedPortfolioReturnsTransactionCostsTS, Rf = 0, FUN=&quot;StdDev&quot;)
@@ -1080,6 +1169,22 @@ sharpeRatioForecastedPortfolioReturns</code></pre>
 <pre class="r"><code>sharpeRatioForecastedPortfolioReturnsSP500</code></pre>
 <pre><code>##                                    [,1]
 ## StdDev Sharpe (Rf=0%, p=95%): 0.1006876</code></pre>
+<pre class="r"><code># Annualized
+sharpeRatioForecastedPortfolioReturns*annualizationFactor</code></pre>
+<pre><code>##                               rowSums(forecastedPortfolioReturns)
+## StdDev Sharpe (Rf=0%, p=95%):                            2.055716</code></pre>
+<pre class="r"><code>sharpeRatioForecastedPortfolioReturnsTransactionCosts*annualizationFactor</code></pre>
+<pre><code>##                               rowSums(forecastedPortfolioReturnsTransactionCosts)
+## StdDev Sharpe (Rf=0%, p=95%):                                           0.7912285</code></pre>
+<pre class="r"><code>sharpeRatioForecastedPortfolioReturnsEqualWeights*annualizationFactor</code></pre>
+<pre><code>##                               rowSums(forecastedPortfolioReturnsEqualWeights)
+## StdDev Sharpe (Rf=0%, p=95%):                                        2.155157</code></pre>
+<pre class="r"><code>sharpeRatioForecastedPortfolioReturnsEqualWeightsTransactionCosts*annualizationFactor</code></pre>
+<pre><code>##                               rowSums(forecastedPortfolioReturnsEqualWeightsTransactionCosts)
+## StdDev Sharpe (Rf=0%, p=95%):                                                        1.828334</code></pre>
+<pre class="r"><code>sharpeRatioForecastedPortfolioReturnsSP500*annualizationFactor</code></pre>
+<pre><code>##                                   [,1]
+## StdDev Sharpe (Rf=0%, p=95%): 1.598366</code></pre>
 <pre class="r"><code># Sortino Ratio
 sortinoRatioForecastedPortfolioReturns &lt;- SortinoRatio(forecastedPortfolioReturnsTS, MAR = 0)
 sortinoRatioForecastedPortfolioReturnsTransactionCosts &lt;- SortinoRatio(forecastedPortfolioReturnsTransactionCostsTS, MAR = 0)
@@ -1102,6 +1207,22 @@ sortinoRatioForecastedPortfolioReturns</code></pre>
 <pre class="r"><code>sortinoRatioForecastedPortfolioReturnsSP500</code></pre>
 <pre><code>##                               [,1]
 ## Sortino Ratio (MAR = 0%) 0.1413824</code></pre>
+<pre class="r"><code># Annualized
+sortinoRatioForecastedPortfolioReturns*annualizationFactor</code></pre>
+<pre><code>##                          rowSums(forecastedPortfolioReturns)
+## Sortino Ratio (MAR = 0%)                            3.462852</code></pre>
+<pre class="r"><code>sortinoRatioForecastedPortfolioReturnsTransactionCosts*annualizationFactor</code></pre>
+<pre><code>##                          rowSums(forecastedPortfolioReturnsTransactionCosts)
+## Sortino Ratio (MAR = 0%)                                            1.242708</code></pre>
+<pre class="r"><code>sortinoRatioForecastedPortfolioReturnsEqualWeights*annualizationFactor</code></pre>
+<pre><code>##                          rowSums(forecastedPortfolioReturnsEqualWeights)
+## Sortino Ratio (MAR = 0%)                                        3.063508</code></pre>
+<pre class="r"><code>sortinoRatioForecastedPortfolioReturnsEqualWeightsTransactionCosts*annualizationFactor</code></pre>
+<pre><code>##                          rowSums(forecastedPortfolioReturnsEqualWeightsTransactionCosts)
+## Sortino Ratio (MAR = 0%)                                                        2.566085</code></pre>
+<pre class="r"><code>sortinoRatioForecastedPortfolioReturnsSP500*annualizationFactor</code></pre>
+<pre><code>##                              [,1]
+## Sortino Ratio (MAR = 0%) 2.244376</code></pre>
 <pre class="r"><code>#Maximum Drawdown
 maximumDrawdownForecastedPortfolioReturns &lt;- maxDrawdown(forecastedPortfolioReturnsTS)
 maximumDrawdownForecastedPortfolioReturnsTransactionCosts &lt;- maxDrawdown(forecastedPortfolioReturnsTransactionCostsTS)
@@ -1119,6 +1240,17 @@ maximumDrawdownForecastedPortfolioReturns</code></pre>
 <pre><code>## [1] 0.1973301</code></pre>
 <pre class="r"><code>maximumDrawdownForecastedPortfolioReturnsSP500</code></pre>
 <pre><code>## [1] 0.2225619</code></pre>
+<pre class="r"><code># Annualized
+maximumDrawdownForecastedPortfolioReturns*annualizationFactor</code></pre>
+<pre><code>## [1] 2.430467</code></pre>
+<pre class="r"><code>maximumDrawdownForecastedPortfolioReturnsTransactionCosts*annualizationFactor</code></pre>
+<pre><code>## [1] 4.069971</code></pre>
+<pre class="r"><code>maximumDrawdownForecastedPortfolioReturnsEqualWeights*annualizationFactor</code></pre>
+<pre><code>## [1] 3.079329</code></pre>
+<pre class="r"><code>maximumDrawdownForecastedPortfolioReturnsEqualWeightsTransactionCosts*annualizationFactor</code></pre>
+<pre><code>## [1] 3.132519</code></pre>
+<pre class="r"><code>maximumDrawdownForecastedPortfolioReturnsSP500*annualizationFactor</code></pre>
+<pre><code>## [1] 3.53306</code></pre>
 <pre class="r"><code>#Turnover
 forecastedWeightsForTurnoverCalculations &lt;- ts(forecastedWeightsForTurnoverCalculations)
 turnoverOptimized &lt;- mean(as.data.frame(abs(percentChange(forecastedWeightsForTurnoverCalculations) / 100))[-1,1])
@@ -1130,94 +1262,11 @@ turnoverOptimized</code></pre>
 <pre><code>## [1] 0.3517573</code></pre>
 <pre class="r"><code>turnoverEqualWeights</code></pre>
 <pre><code>## [1] 0.2962967</code></pre>
-</div>
-<div id="mean-volatilty-sharpe-ratio-sortino-ratio-maximum-drawdown-turnover" class="section level1">
-<h1>Mean, Volatilty, Sharpe Ratio, Sortino Ratio, Maximum Drawdown, Turnover</h1>
-<pre class="r"><code>options(scipen = 999)
-setwd(&quot;C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files&quot;)
-
-forecastedPortfolioReturns &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturns.csv&quot;, header=TRUE, sep=&quot;,&quot;))
-forecastedPortfolioReturns[, 1]  &lt;- as.numeric(forecastedPortfolioReturns[, 1])
-
-forecastedPortfolioReturnsEqualWeights &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturnsEqualWeights.csv&quot;, header=TRUE, sep=&quot;,&quot;))
-forecastedPortfolioReturnsEqualWeights[, 1]  &lt;- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
-
-forecastedPortfolioReturnsSP500 &lt;- t(read.csv(file=&quot;TESTForecastedPortfolioReturnsSP500.csv&quot;, header=TRUE, sep=&quot;,&quot;))
-forecastedPortfolioReturnsSP500[, 1]  &lt;- as.numeric(forecastedPortfolioReturnsSP500[, 1])
-
-forecastedPortfolioReturnsTS &lt;- ts(forecastedPortfolioReturns)
-forecastedPortfolioReturnsEqualWeightsTS &lt;- ts(forecastedPortfolioReturnsEqualWeights)
-forecastedPortfolioReturnsSP500TS &lt;- ts(forecastedPortfolioReturnsSP500)
-
-
-#Mean Returns
-meanForecastedPortfolioReturns &lt;- mean(forecastedPortfolioReturns)
-meanForecastedPortfolioReturnsEqualWeights &lt;- mean(forecastedPortfolioReturnsEqualWeights)
-meanForecastedPortfolioReturnsSP500 &lt;- mean(forecastedPortfolioReturnsSP500)
-
-print(meanForecastedPortfolioReturns)
-print(meanForecastedPortfolioReturnsEqualWeights)
-print(meanForecastedPortfolioReturnsSP500)
-
-#Volatility
-sdForecastedPortfolioReturns &lt;- sd(forecastedPortfolioReturns)
-sdForecastedPortfolioReturnsEqualWeights &lt;- sd(forecastedPortfolioReturnsEqualWeights)
-sdForecastedPortfolioReturnsSP500 &lt;- sd(forecastedPortfolioReturnsSP500)
-
-print(sdForecastedPortfolioReturns)
-print(sdForecastedPortfolioReturnsEqualWeights)
-print(sdForecastedPortfolioReturnsSP500)
-
-#Sharpe Ratios
-sharpeRatioForecastedPortfolioReturns &lt;- SharpeRatio(forecastedPortfolioReturnsTS, Rf = 0, FUN=&quot;StdDev&quot;)
-sharpeRatioForecastedPortfolioReturnsEqualWeights &lt;- SharpeRatio(forecastedPortfolioReturnsEqualWeightsTS, Rf = 0, FUN=&quot;StdDev&quot;)
-sharpeRatioForecastedPortfolioReturnsSP500 &lt;- SharpeRatio(forecastedPortfolioReturnsSP500TS, Rf = 0, FUN=&quot;StdDev&quot;)
-
-print(sharpeRatioForecastedPortfolioReturns)
-print(sharpeRatioForecastedPortfolioReturnsEqualWeights)
-print(sharpeRatioForecastedPortfolioReturnsSP500)
-
-#Sortino Ratios
-sortinoRatioForecastedPortfolioReturns &lt;- SortinoRatio(forecastedPortfolioReturnsTS, MAR = 0)
-sortinoRatioForecastedPortfolioReturnsEqualWeights &lt;- SortinoRatio(forecastedPortfolioReturnsEqualWeightsTS, MAR = 0)
-sortinoRatioForecastedPortfolioReturnsSP500 &lt;- SortinoRatio(forecastedPortfolioReturnsSP500TS, MAR = 0)
-
-print(sortinoRatioForecastedPortfolioReturns)
-print(sortinoRatioForecastedPortfolioReturnsEqualWeights)
-print(sortinoRatioForecastedPortfolioReturnsSP500)
-
-#Maximum Drawdown
-maximumDrawdownForecastedPortfolioReturns &lt;- maxDrawdown(forecastedPortfolioReturnsTS)
-maximumDrawdownForecastedPortfolioReturnsEqualWeights &lt;- maxDrawdown(forecastedPortfolioReturnsEqualWeightsTS)
-maximumDrawdownForecastedPortfolioReturnsSP500 &lt;- maxDrawdown(forecastedPortfolioReturnsSP500TS)
-
-print(maximumDrawdownForecastedPortfolioReturns)
-print(maximumDrawdownForecastedPortfolioReturnsEqualWeights)
-print(maximumDrawdownForecastedPortfolioReturnsSP500)
-
-stocksUsedForEachForecastedPeriod &lt;- read.csv(file=&quot;StocksUsedForEachForecastedPeriod.csv&quot;, header=TRUE, sep=&quot;,&quot;)
-
-rowIndexes &lt;- seq(1:nrow(stocksUsedForEachForecastedPeriod)-1)
-
-listOfTurnoverRates &lt;- list()
-for (rowIndex in rowIndexes)
-{
-  currentRowTransposed &lt;- as.vector(t(stocksUsedForEachForecastedPeriod[rowIndex,]))
-  nextRowTransposed &lt;- as.vector(t(stocksUsedForEachForecastedPeriod[rowIndex+1,]))
-  
-  uniqueStocksBetweenTheTwoRows &lt;- as.data.frame(currentRowTransposed[!(currentRowTransposed %in% nextRowTransposed)])
-  
-  numberOfDifferentStocks &lt;- nrow(uniqueStocksBetweenTheTwoRows)
-  turnoverRate &lt;- numberOfDifferentStocks/30
-  listOfTurnoverRates[rowIndex] &lt;- turnoverRate
-}
-
-turnoverRates &lt;- dplyr::bind_cols(listOfTurnoverRates)
-turnoverRates &lt;- as.data.frame(turnoverRates)
-
-averageTurnoverRate &lt;- mean(as.numeric(turnoverRates))
-
-averageTurnoverRate</code></pre>
+<pre class="r"><code># Annualized
+turnoverOptimized*annualizationFactor</code></pre>
+<pre><code>## [1] 5.583974</code></pre>
+<pre class="r"><code>turnoverEqualWeights*annualizationFactor</code></pre>
+<pre><code>## [1] 4.703565</code></pre>
 </div>
 
 
