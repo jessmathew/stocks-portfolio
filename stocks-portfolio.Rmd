@@ -24,12 +24,14 @@ library(tseries)
 library(xts)
 library(quantmod)
 library(PortfolioAnalytics)
-library(ROI)
-library(ROI.plugin.glpk)
-library(ROI.plugin.quadprog)
-library(ROI.plugin.symphony)
 library(tsbox)
 library(reshape2)
+library(tfplot)
+library(MASS)
+library(quadprog)
+library(matrixcalc)
+library(Matrix)
+library(BLCOP)
 ```
 
 # Merge all the individual files together to create two datasets. (1) Date and Adjusted Close Price (2) Date and Volume
@@ -208,23 +210,19 @@ options(scipen = 999)
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
 fittedFullLogAssetData <- read.csv(file="FullLogStockAssetDataFittedForOutliers.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))[-1,]
 
-justTesting <- as.data.frame(colMeans(fittedFullLogAssetData[,-1]))
-
-count(colSums(justTesting) < 0)
-count(colSums(justTesting) >= 0)
-
 numberOfRows <- nrow(fittedFullLogAssetData)
 numberOfColumns <- ncol(fittedFullLogAssetData)
 
 h <- 5
 m <- 252
 
-# breakingCondition <- numberOfRows + h
-
 index <- 0
 
 stockIndexesForFirstLoop <- seq(2,numberOfColumns)
 listOftotalReturnsForEachForecastedPeriod <- list()
+listOfTotalWeightChangeForEachForecastedPeriod <- list()
+
+weightsForPortfolioLastIteration <- data.frame()
 while (TRUE)
 {
   print("While loop index")
@@ -239,22 +237,39 @@ while (TRUE)
   
   #Sharpe Ratio Filtering
   sharpeRatiosWithStockIndex <- data.frame(Stock=character(), SharpeRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
-  
+
   for (stockIndexForFirstLoop in stockIndexesForFirstLoop)
   {
     currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,c(1,stockIndexForFirstLoop)]
     columnName <- colnames(currentAssetDataForStockIndex)[2]
     sharpeRatiosWithStockIndex[nrow(sharpeRatiosWithStockIndex)+1, ] <- c(columnName, (mean(currentAssetDataForStockIndex[,2]))/(sd(currentAssetDataForStockIndex[,2])))
   }
-  
+
   stockNamesWithHighestSharpeRatios <- sharpeRatiosWithStockIndex %>% arrange(desc(SharpeRatio))
   stockNamesWithHighestSharpeRatios <- data.frame(head(stockNamesWithHighestSharpeRatios, 50))
-  
+
   stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
+
+  #Sortino Ratio Filtering
+  sortinoRatiosWithStockIndex <- data.frame(Stock=character(), SortinoRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
+
+  for (stockIndexForFirstLoopTest in seq(2:ncol(stocksWithHighestSharpeRatios)))
+  {
+    currentAssetDataForStockIndex <- stocksWithHighestSharpeRatios[,c(1,stockIndexForFirstLoopTest)]
+    columnName <- colnames(currentAssetDataForStockIndex)[2]
+
+    justTesting <- currentAssetDataForStockIndex[,2]
+    sortinoRatiosWithStockIndex[nrow(sortinoRatiosWithStockIndex)+1, ] <- c(columnName, (mean(justTesting))/(sd(justTesting[justTesting<0])))
+  }
+
+  stockNamesWithHighestSortinoRatios <- sortinoRatiosWithStockIndex %>% arrange(desc(SortinoRatio))
+  stockNamesWithHighestSortinoRatios <- data.frame(head(stockNamesWithHighestSortinoRatios, 40))
+
+  stocksWithHighestSortinoRatios <- subset(stocksWithHighestSharpeRatios, select=gsub(".1", "", stockNamesWithHighestSortinoRatios[,1]))
   
   #Correlation Filtering
-  correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate(use = "everything") %>% stretch() %>% arrange(abs(r))
-  
+  correlationBetweenTheStocks <- stocksWithHighestSortinoRatios %>% correlate(use = "everything") %>% stretch() %>% arrange(abs(r))
+
   namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %>% unique()
   namesOfLowlyCorrelatedStocks <- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
   
@@ -263,24 +278,32 @@ while (TRUE)
   stocksToUseForModelingXTS <- xts(stocksToUseForModelingWithDateAppended[,-1], order.by=stocksToUseForModelingWithDateAppended[,1])
   
   stockIndexesForSecondLoop <- seq(1:ncol(stocksToUseForModeling))
+  actualLogReturnsForStocksList = list()
   forecastedLogReturnsForStocksList = list()
   
   for(stockIndexForSecondLoop in stockIndexesForSecondLoop) {
     print("Second loop index")
     print(stockIndexForSecondLoop)
     currentStock <- stocksToUseForModeling[stockIndexForSecondLoop]
-
+    
     columnName <- colnames(currentStock)
     
     currentStockTS <- ts(currentStock)
     currentStockTSFitted <- auto.arima(currentStockTS)
     currentStockForecasted <- forecast(currentStockTSFitted,h=h)$mean
-    # forcastedLogReturnsForCurrentStock <- as.data.frame(currentStockForecasted)
-    forcastedLogReturnsForCurrentStock <- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
     
+    actualLogReturnsForCurrentStock <- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
+    forcastedLogReturnsForCurrentStock <- as.data.frame(currentStockForecasted)
+    
+    colnames(actualLogReturnsForCurrentStock)[colnames(actualLogReturnsForCurrentStock)=="assetsDataForForecastedTimePeriod[, columnName]"] <- columnName
     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="x"] <- columnName
+    
+    actualLogReturnsForStocksList[[stockIndexForSecondLoop]] <- actualLogReturnsForCurrentStock
     forecastedLogReturnsForStocksList[[stockIndexForSecondLoop]] <- forcastedLogReturnsForCurrentStock
   }
+  
+  actualLogReturnsForStocks <- dplyr::bind_cols(actualLogReturnsForStocksList)
+  actualLogReturnsForStocks <- as.matrix.data.frame(actualLogReturnsForStocks)
   
   forecastedLogReturnsForStocks <- dplyr::bind_cols(forecastedLogReturnsForStocksList)
   forecastedLogReturnsForStocks <- as.matrix.data.frame(forecastedLogReturnsForStocks)
@@ -288,36 +311,21 @@ while (TRUE)
   tickers <- colnames(stocksToUseForModeling)
   
   # Black Litterman Model for Portfolio Optimization
-  meanReturns <- colMeans(stocksToUseForModeling)
-  covMat <- cov(stocksToUseForModeling)
   
-  q <- matrix(c(0.041,0.016,0.008),3,1)
-  P <- matrix(c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,-1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,-1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 ), 3, 30, byrow = TRUE)
-  sigma <- matrix(c(0.000801,0,0, 0,0.009546,0, 0,0,0.000884), 3,3, byrow = TRUE)
-  tau = 0.025
-  pi <- as.matrix(meanReturns)
+  meanReturnsOriginal <- as.matrix(colMeans(stocksToUseForModeling))
+  covMatOriginal <- cov(stocksToUseForModeling)
+
+  meanReturnsForecasted <- as.matrix(colMeans(forecastedLogReturnsForStocks))
+  covMatForecasted <- cov(forecastedLogReturnsForStocks)
   
-  #Calculating the first term in BL method(Sum of weights = 1)
-  tau_cov= tau*covMat
-  weight_1 = ginv(tau_cov)
-  P_transpose = t(P)
-  sigma_inv = ginv(sigma)
-  weight_2 <- P_transpose %*% sigma_inv %*% P
-  first_term_before_inv = weight_1 + weight_2
-  first_term = ginv(first_term_before_inv)
+  tau <- 1.0
   
-  #Calculating the second term in BL method(Sum of weighted Pi and Q)
-  pi_component = weight_1 %*% pi
-  q_component = P_transpose %*% sigma_inv %*% q
-  second_term = pi_component + q_component
+  meanReturns <- ginv(ginv((tau*covMatOriginal)) + ginv(covMatForecasted)) %*% ((ginv(tau*covMatOriginal) %*% meanReturnsOriginal) + (ginv(covMatForecasted) %*% meanReturnsForecasted))
+  covMat <- ginv(ginv(tau*covMatOriginal)+ginv(covMatForecasted))
   
-  #Final BL matrix
-  BL_matrix = first_term %*% second_term
-  
-  #Define the QP
-  Dmat_BL <- 2*covMat
+  Dmat_BL <- covMat
   dvec_BL <- rep(0,30)
-  Amat_BL <- matrix(c(BL_matrix,-BL_matrix,rep(1,30),rep(-1,30),diag(length(BL_matrix))),30,12)
+  Amat_BL <- matrix(c(meanReturns,-meanReturns,rep(1,30),rep(-1,30),diag(length(meanReturns))),30,12)
   
   # compute efficient frontier for eight stocks
   varP_BL=vector()
@@ -361,7 +369,7 @@ while (TRUE)
   for (i in 1:length(Rvals_BL)) {
     R=Rvals_BL[i]
     bvec_BL <- c(R,-R,1,-1,0,0,0,0,0,0,0,0)
-    qpSol_BL=solve.QP(Dmat_BL/10^6,dvec_BL/10^6,Amat_BL,bvec_BL, meq=0)
+    qpSol_BL=solve.QP((nearPD(Dmat_BL)$mat)/10^6,dvec_BL/10^6,Amat_BL,bvec_BL, meq=0)
     varP_BL[i]=qpSol_BL$value
     sigmaP_BL[i]=sqrt(varP_BL[i])
     w1_BL[i]=qpSol_BL$solution[1];
@@ -399,25 +407,42 @@ while (TRUE)
   #Portfolio weights
   weightsoutput<-data.frame(w1_BL,w2_BL,w3_BL,w4_BL,w5_BL,w6_BL,w7_BL,w8_BL,w9_BL,w10_BL,w11_BL,w12_BL,w13_BL,w14_BL,w15_BL,w16_BL,w17_BL,w18_BL,w19_BL,w20_BL,w21_BL,w22_BL,w23_BL,w24_BL,w25_BL,w26_BL,w27_BL,w28_BL,w29_BL,w30_BL)
   
-  weightsAverage <- as.data.frame(colMeans(weightsoutput))
+  weightsForPortfolioThisIteration <- as.data.frame(colMeans(weightsoutput))
   
-  # print(dim(weightsAverage))
+  weightsRowNames <- as.data.frame(tickers)
   
+  for (weightsRowIndex in seq(1:nrow(weightsRowNames)))
+  {
+    rownames(weightsForPortfolioThisIteration)[weightsRowIndex] <- as.character(weightsRowNames[weightsRowIndex,1])
+  }
   
-  columnSumsOfStocksToUseForModeling <- as.data.frame(colSums(stocksToUseForModeling))
-  weightsForPortfolio <- as.data.frame(sweep(columnSumsOfStocksToUseForModeling,2,colSums(columnSumsOfStocksToUseForModeling),`/`))
+  mergedWeightDataFrame <- merge(weightsForPortfolioLastIteration,weightsForPortfolioThisIteration, by="row.names", all = TRUE)
+  mergedWeightDataFrame[is.na(mergedWeightDataFrame)] <- 0
   
-  print(dim(forecastedLogReturnsForStocks))
-  print(dim(weightsAverage))
+  absoluteDifferenceBetweenColumns <- as.double()
+  if (index>0)
+  {
+    absoluteDifferenceBetweenColumns <- sum(abs(mergedWeightDataFrame[,2] - mergedWeightDataFrame[,3]))
+  }
+  else
+  {
+    absoluteDifferenceBetweenColumns <- 0
+  }
+  listOfTotalWeightChangeForEachForecastedPeriod[[index+1]] <- absoluteDifferenceBetweenColumns
   
-  totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsAverage)
+  weightsForPortfolioLastIteration <- weightsForPortfolioThisIteration
+  
+  print(weightsForPortfolioThisIteration)
+  print(colSums(as.data.frame(weightsForPortfolioThisIteration)))
+  
+  totalReturnsForTheForecastingWindowByDay <- as.matrix(actualLogReturnsForStocks) %*% as.matrix(weightsForPortfolioThisIteration)
   
   totalReturnForTheForecastingWindow <- unname(colSums(totalReturnsForTheForecastingWindowByDay))
-  listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnForTheForecastingWindow
+  listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnsForTheForecastingWindowByDay
   
   index <- index + 1
-  if (index == 455)
-  # if (endRow > 257)
+  if (index == 453)
+    # if (endRow > 257)
   {
     break
   }
@@ -428,7 +453,13 @@ totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecast
 
 totalReturnsForEachForecastedPeriod
 
-write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\TESTForecastedPortfolioReturns.csv", row.names = FALSE)
+totalWeightChangesForEachForecastedPeriod <- dplyr::bind_cols(listOfTotalWeightChangeForEachForecastedPeriod)
+totalWeightChangesForEachForecastedPeriod <- as.data.frame(totalWeightChangesForEachForecastedPeriod)
+
+totalWeightChangesForEachForecastedPeriod
+
+write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPROptimized.csv", row.names = FALSE)
+write.csv(totalWeightChangesForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedWOptimized.csv", row.names = FALSE)
 ```
 
 # Portfolio Optimization with Equal Weights
@@ -437,23 +468,19 @@ options(scipen = 999)
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
 fittedFullLogAssetData <- read.csv(file="FullLogStockAssetDataFittedForOutliers.csv", header=TRUE, sep=",", colClasses=c("Date",rep("numeric",3906)))[-1,]
 
-justTesting <- as.data.frame(colMeans(fittedFullLogAssetData[,-1]))
-
-count(colSums(justTesting) < 0)
-count(colSums(justTesting) >= 0)
-
 numberOfRows <- nrow(fittedFullLogAssetData)
 numberOfColumns <- ncol(fittedFullLogAssetData)
 
 h <- 5
 m <- 252
 
-# breakingCondition <- numberOfRows + h
-
 index <- 0
 
 stockIndexesForFirstLoop <- seq(2,numberOfColumns)
 listOftotalReturnsForEachForecastedPeriod <- list()
+listOfTotalWeightChangeForEachForecastedPeriod <- list()
+
+weightsForPortfolioLastIteration <- data.frame()
 while (TRUE)
 {
   print("While loop index")
@@ -481,8 +508,42 @@ while (TRUE)
   
   stocksWithHighestSharpeRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSharpeRatios[,1])
   
+  #Sortino Ratio Filtering
+  sortinoRatiosWithStockIndex <- data.frame(Stock=character(), SortinoRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
+  
+  for (stockIndexForFirstLoopTest in seq(2:ncol(stocksWithHighestSharpeRatios)))
+  {
+    currentAssetDataForStockIndex <- stocksWithHighestSharpeRatios[,c(1,stockIndexForFirstLoopTest)]
+    columnName <- colnames(currentAssetDataForStockIndex)[2]
+    
+    justTesting <- currentAssetDataForStockIndex[,2]
+    sortinoRatiosWithStockIndex[nrow(sortinoRatiosWithStockIndex)+1, ] <- c(columnName, (mean(justTesting))/(sd(justTesting[justTesting<0])))
+  }
+  
+  stockNamesWithHighestSortinoRatios <- sortinoRatiosWithStockIndex %>% arrange(desc(SortinoRatio))
+  stockNamesWithHighestSortinoRatios <- data.frame(head(stockNamesWithHighestSortinoRatios, 40))
+  
+  stocksWithHighestSortinoRatios <- subset(stocksWithHighestSharpeRatios, select=gsub(".1", "", stockNamesWithHighestSortinoRatios[,1]))
+  
+  # #Sortino Ratio Filtering TEST
+  # sortinoRatiosWithStockIndex <- data.frame(Stock=character(), SortinoRatio= as.double(double()), stringsAsFactors=FALSE)[stockIndexesForFirstLoop,]
+  # 
+  # for (stockIndexForFirstLoop in stockIndexesForFirstLoop)
+  # {
+  #   currentAssetDataForStockIndex <- assetsDataForCurrentTimePeriod[,c(1,stockIndexForFirstLoop)]
+  #   columnName <- colnames(currentAssetDataForStockIndex)[2]
+  # 
+  #   justTesting <- currentAssetDataForStockIndex[,2]
+  #   sortinoRatiosWithStockIndex[nrow(sortinoRatiosWithStockIndex)+1, ] <- c(columnName, (mean(justTesting))/(sd(justTesting[justTesting<0])))
+  # }
+  # 
+  # stockNamesWithHighestSortinoRatios <- sortinoRatiosWithStockIndex %>% arrange(desc(SortinoRatio))
+  # stockNamesWithHighestSortinoRatios <- data.frame(head(stockNamesWithHighestSortinoRatios, 30))
+  # 
+  # stocksWithHighestSortinoRatios <- subset(assetsDataForCurrentTimePeriod, select=stockNamesWithHighestSortinoRatios[,1])
+  
   #Correlation Filtering
-  correlationBetweenTheStocks <- stocksWithHighestSharpeRatios %>% correlate(use = "everything") %>% stretch() %>% arrange(abs(r))
+  correlationBetweenTheStocks <- stocksWithHighestSortinoRatios %>% correlate(use = "everything") %>% stretch() %>% arrange(abs(r))
   
   namesOfLowlyCorrelatedStocks <- data.frame(stack(correlationBetweenTheStocks[1:2]))[,1] %>% unique()
   namesOfLowlyCorrelatedStocks <- data.frame(head(namesOfLowlyCorrelatedStocks, 30))
@@ -504,10 +565,9 @@ while (TRUE)
     currentStockTS <- ts(currentStock)
     currentStockTSFitted <- auto.arima(currentStockTS)
     currentStockForecasted <- forecast(currentStockTSFitted,h=h)$mean
-    # forcastedLogReturnsForCurrentStock <- as.data.frame(currentStockForecasted)
     forcastedLogReturnsForCurrentStock <- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
     
-    colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="x"] <- columnName
+    colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="assetsDataForForecastedTimePeriod[, columnName]"] <- columnName
     forecastedLogReturnsForStocksList[[stockIndexForSecondLoop]] <- forcastedLogReturnsForCurrentStock
   }
   
@@ -516,20 +576,44 @@ while (TRUE)
   
   tickers <- colnames(stocksToUseForModeling)
   
-  # Black Litterman Model for Portfolio Optimization
-  meanReturns <- colMeans(stocksToUseForModeling)
-  covMat <- cov(stocksToUseForModeling)
+  # Equal Weights for Portfolio Optimization
   
-  weightsForPortfolio <- data.frame(matrix(ncol = 1, nrow = 30))
-  weightsForPortfolio[] <- 1/30
+  weightsForPortfolioThisIteration <- data.frame(matrix(ncol = 1, nrow = 30))
+  weightsForPortfolioThisIteration[] <- 1/30
   
-  totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolio)
+  weightsRowNames <- as.data.frame(tickers)
+  
+  for (weightsRowIndex in seq(1:nrow(weightsRowNames)))
+  {
+    rownames(weightsForPortfolioThisIteration)[weightsRowIndex] <- as.character(weightsRowNames[weightsRowIndex,1])
+  }
+  
+  mergedWeightDataFrame <- merge(weightsForPortfolioLastIteration,weightsForPortfolioThisIteration, by="row.names", all = TRUE)
+  mergedWeightDataFrame[is.na(mergedWeightDataFrame)] <- 0
+  
+  absoluteDifferenceBetweenColumns <- as.double()
+  if (index>0)
+  {
+    absoluteDifferenceBetweenColumns <- sum(abs(mergedWeightDataFrame[,2] - mergedWeightDataFrame[,3]))
+  }
+  else
+  {
+    absoluteDifferenceBetweenColumns <- 0
+  }
+  listOfTotalWeightChangeForEachForecastedPeriod[[index+1]] <- absoluteDifferenceBetweenColumns
+  
+  weightsForPortfolioLastIteration <- weightsForPortfolioThisIteration
+  
+  print(weightsForPortfolioThisIteration)
+  print(colSums(as.data.frame(weightsForPortfolioThisIteration)))
+  
+  totalReturnsForTheForecastingWindowByDay <- as.matrix(forecastedLogReturnsForStocks) %*% as.matrix(weightsForPortfolioThisIteration)
   
   totalReturnForTheForecastingWindow <- unname(colSums(totalReturnsForTheForecastingWindowByDay))
-  listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnForTheForecastingWindow
+  listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnsForTheForecastingWindowByDay
   
   index <- index + 1
-  if (index == 455)
+  if (index == 453)
     # if (endRow > 257)
   {
     break
@@ -541,7 +625,13 @@ totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecast
 
 totalReturnsForEachForecastedPeriod
 
-write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\TESTForecastedPortfolioReturnsEqualWeights.csv", row.names = FALSE)
+totalWeightChangesForEachForecastedPeriod <- dplyr::bind_cols(listOfTotalWeightChangeForEachForecastedPeriod)
+totalWeightChangesForEachForecastedPeriod <- as.data.frame(totalWeightChangesForEachForecastedPeriod)
+
+totalWeightChangesForEachForecastedPeriod
+
+write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPREqualWeights.csv", row.names = FALSE)
+write.csv(totalWeightChangesForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedWEqualWeights.csv", row.names = FALSE)
 ``` 
 
 # Portfolio Optimization for S&P500
@@ -635,7 +725,6 @@ while (TRUE)
     currentStockTS <- ts(currentStock)
     currentStockTSFitted <- auto.arima(currentStockTS)
     currentStockForecasted <- forecast(currentStockTSFitted,h=h)$mean
-    # forcastedLogReturnsForCurrentStock <- as.data.frame(currentStockForecasted)
     forcastedLogReturnsForCurrentStock <- as.data.frame(assetsDataForForecastedTimePeriod[,columnName])
     
     colnames(forcastedLogReturnsForCurrentStock)[colnames(forcastedLogReturnsForCurrentStock)=="x"] <- columnName
@@ -651,7 +740,6 @@ while (TRUE)
   covMat <- cov(stocksToUseForModeling)
   
   columnSumsOfStocksToUseForModeling <- as.data.frame(colSums(stocksToUseForModeling))
-  # weightsForPortfolio <- as.data.frame(sweep(columnSumsOfStocksToUseForModeling,2,colSums(columnSumsOfStocksToUseForModeling),`/`))
   
   weightsForPortfolio <- data.frame(matrix(ncol = 1, nrow = 30))
   weightsForPortfolio[] <- 1/30
@@ -662,7 +750,7 @@ while (TRUE)
   listOftotalReturnsForEachForecastedPeriod[[index+1]] <- totalReturnForTheForecastingWindow
   
   index <- index + 1
-  if (index == 455)
+  if (index == 453)
     # if (endRow > 257)
   {
     break
@@ -674,230 +762,154 @@ totalReturnsForEachForecastedPeriod <- as.data.frame(totalReturnsForEachForecast
 
 totalReturnsForEachForecastedPeriod
 
-write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\TESTForecastedPortfolioReturnsSP500.csv", row.names = FALSE)
-```
-
-```{r eval=FALSE}
-options(scipen = 999)
-setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
-
-forecastedPortfolioReturns <- t(read.csv(file="TESTForecastedPortfolioReturns.csv", header=TRUE, sep=","))
-forecastedPortfolioReturns[, 1]  <- as.numeric(forecastedPortfolioReturns[, 1])
-
-forecastedPortfolioReturnsEqualWeights <- t(read.csv(file="TESTForecastedPortfolioReturnsEqualWeights.csv", header=TRUE, sep=","))
-forecastedPortfolioReturnsEqualWeights[, 1]  <- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
-
-forecastedPortfolioReturnsSP500 <- t(read.csv(file="TESTForecastedPortfolioReturnsSP500.csv", header=TRUE, sep=","))
-forecastedPortfolioReturnsSP500[, 1]  <- as.numeric(forecastedPortfolioReturnsSP500[, 1])
-
-cumulativeForecastedPortfolioReturns <- cumsum(forecastedPortfolioReturns[, 1])
-cumulativeForecastedPortfolioReturnsEqualWeights <- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
-cumulativeForecastedPortfolioReturnsSP500 <- cumsum(forecastedPortfolioReturnsSP500[, 1])
-
-plot(cumulativeForecastedPortfolioReturns,type="l",col="red", lty=1, main = "Cumulative Returns Over Time", xlab = "Time", ylab = "Cumulative Returns")
-lines(cumulativeForecastedPortfolioReturnsEqualWeights,col="green", lty=1)
-lines(cumulativeForecastedPortfolioReturnsSP500,col="blue", lty=1)
-
-legend("topleft", legend=c("Forecasted Portfolio (Optimized)", "Forecasted Portfolio (Equal Weights)", "S&P 500"),
-       col=c("red","green","blue"), lty=1, cex=1,bty="n")
-```
-
-```{r eval=FALSE}
-options(scipen = 999)
-setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
-
-k = .0005
-
-forecastedPortfolioReturns <- t(read.csv(file="ForecastedPROptimized.csv", header=TRUE, sep=","))
-forecastedPortfolioReturns[, 1]  <- as.numeric(forecastedPortfolioReturns[, 1])
-
-forecastedPortfolioReturnsEqualWeights <- t(read.csv(file="ForecastedPREqualWeights.csv", header=TRUE, sep=","))
-forecastedPortfolioReturnsEqualWeights[, 1]  <- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
-
-forecastedPortfolioReturnsSP500 <- t(read.csv(file="TESTForecastedPortfolioReturnsSP500.csv", header=TRUE, sep=","))
-forecastedPortfolioReturnsSP500[, 1]  <- as.numeric(forecastedPortfolioReturnsSP500[, 1])
-
-cumulativeForecastedPortfolioReturns <- cumsum(forecastedPortfolioReturns[, 1])
-cumulativeForecastedPortfolioReturnsEqualWeights <- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
-cumulativeForecastedPortfolioReturnsSP500 <- cumsum(forecastedPortfolioReturnsSP500[, 1])
-
-plot(cumulativeForecastedPortfolioReturns,type="l",col="red", lty=1, main = "Cumulative Returns Over Time", xlab = "Time", ylab = "Cumulative Returns")
-lines(cumulativeForecastedPortfolioReturnsEqualWeights,col="green", lty=1)
-lines(cumulativeForecastedPortfolioReturnsSP500,col="blue", lty=1)
-
-forecastedWeights <- t(read.csv(file="ForecastedWOptimized.csv", header=TRUE, sep=","))
-forecastedWeights[, 1]  <- as.numeric(forecastedWeights[, 1])
-forecastedPortfolioReturns <- 1+forecastedPortfolioReturns
-forecastedWeights <- (1-(k*forecastedWeights))
-forecastedPortfolioReturns <- (1-(forecastedWeights*forecastedPortfolioReturns))
-
-forecastedWeightsEqualWeights <- t(read.csv(file="ForecastedWEqualWeights.csv", header=TRUE, sep=","))
-forecastedWeightsEqualWeights[, 1]  <- as.numeric(forecastedWeightsEqualWeights[, 1])
-forecastedPortfolioReturnsEqualWeights <- 1+forecastedPortfolioReturnsEqualWeights
-forecastedWeightsEqualWeights <- (1-(k*forecastedWeightsEqualWeights))
-forecastedPortfolioReturnsEqualWeights <- (1-(forecastedWeightsEqualWeights*forecastedPortfolioReturnsEqualWeights))
-
-cumulativeForecastedPortfolioReturns <- cumsum(forecastedPortfolioReturns[, 1])
-cumulativeForecastedPortfolioReturnsEqualWeights <- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
-cumulativeForecastedPortfolioReturnsSP500 <- cumsum(forecastedPortfolioReturnsSP500[, 1])
-
-plot(cumulativeForecastedPortfolioReturns,type="l",col="red", lty=1, main = "Cumulative Returns Over Time (Transaction Consts)", xlab = "Time", ylab = "Cumulative Returns")
-lines(cumulativeForecastedPortfolioReturnsEqualWeights,col="green", lty=1)
-lines(cumulativeForecastedPortfolioReturnsSP500,col="blue", lty=1)
-
-legend("topleft", legend=c("Forecasted Portfolio (Optimized)", "Forecasted Portfolio (Equal Weights)", "S&P 500"),
-       col=c("red","green","blue"), lty=1, cex=1,bty="n")
+write.csv(totalReturnsForEachForecastedPeriod,"C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files\\ForecastedPRSP500.csv", row.names = FALSE)
 ```
 
 ```{r eval=TRUE}
 options(scipen = 999)
 setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
 
+## Optimized Portfolio
+
+# Read Data
 k = .0005
 forecastedWeights <- t(read.csv(file="ForecastedWOptimized.csv", header=TRUE, sep=","))
+forecastedWeightsForTurnoverCalculations <- forecastedWeights
+forecastedPortfolioReturnsTransactionCosts <- t(read.csv(file="ForecastedPROptimized.csv", header=TRUE, sep=","))
 
-forecastedPortfolioReturns <- t(read.csv(file="ForecastedPROptimized.csv", header=TRUE, sep=","))
+# Store the portfolio data before modifying for transaction costs.
+forecastedPortfolioReturns <- forecastedPortfolioReturnsTransactionCosts
 
-priorTotals <- as.data.frame(rowSums(forecastedPortfolioReturns))
-
-forecastedPortfolioReturns[,1] <- 1+forecastedPortfolioReturns[,1]
-forecastedPortfolioReturns <- as.data.frame(forecastedPortfolioReturns)
+# Account for transaction costs against our portfolio returns. Only the first day of the h step is penalized.
+forecastedPortfolioReturnsTransactionCosts[,1] <- 1+forecastedPortfolioReturnsTransactionCosts[,1]
+forecastedPortfolioReturnsTransactionCosts <- as.data.frame(forecastedPortfolioReturnsTransactionCosts)
 forecastedWeights <- as.data.frame((1-(k*forecastedWeights)))
+forecastedPortfolioReturnsTransactionCosts[,1] <- forecastedPortfolioReturnsTransactionCosts[,1] * forecastedWeights[match(row.names(forecastedPortfolioReturnsTransactionCosts), row.names(forecastedWeights)), 1]
+forecastedPortfolioReturnsTransactionCosts[,1] <- forecastedPortfolioReturnsTransactionCosts[,1]-1
 
-forecastedPortfolioReturns[,1] <- forecastedPortfolioReturns[,1] * forecastedWeights[match(row.names(forecastedPortfolioReturns), row.names(forecastedWeights)), 1]
-forecastedPortfolioReturns[,1] <- forecastedPortfolioReturns[,1]-1
-
+# Sum each forecasting windows returns together so we have one value instead of h values.
+forecastedPortfolioReturnsTransactionCosts <- as.data.frame(rowSums(forecastedPortfolioReturnsTransactionCosts))
 forecastedPortfolioReturns <- as.data.frame(rowSums(forecastedPortfolioReturns))
 
-priorTotals
-forecastedPortfolioReturns
+## Equal Weights
 
+# Read Data
+k = .0005
+forecastedWeightsEqualWeights <- t(read.csv(file="ForecastedWEqualWeights.csv", header=TRUE, sep=","))
+forecastedWeightsEqualWeightsForTurnoverCalculations <- forecastedWeightsEqualWeights
+forecastedPortfolioReturnsEqualWeightsTransactionCosts <- t(read.csv(file="ForecastedPREqualWeights.csv", header=TRUE, sep=","))
 
-forecastedPortfolioReturnsEqualWeights <- t(read.csv(file="ForecastedPREqualWeights.csv", header=TRUE, sep=","))
-forecastedPortfolioReturnsEqualWeights[, 1]  <- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
+# Store the portfolio data before modifying for transaction costs.
+forecastedPortfolioReturnsEqualWeights <- forecastedPortfolioReturnsEqualWeightsTransactionCosts
 
-forecastedPortfolioReturnsSP500 <- t(read.csv(file="TESTForecastedPortfolioReturnsSP500.csv", header=TRUE, sep=","))
-forecastedPortfolioReturnsSP500[, 1]  <- as.numeric(forecastedPortfolioReturnsSP500[, 1])
+# Account for transaction costs against our portfolio returns. Only the first day of the h step is penalized.
+forecastedPortfolioReturnsEqualWeightsTransactionCosts[,1] <- 1+forecastedPortfolioReturnsEqualWeightsTransactionCosts[,1]
+forecastedPortfolioReturnsEqualWeightsTransactionCosts <- as.data.frame(forecastedPortfolioReturnsEqualWeightsTransactionCosts)
+forecastedWeightsEqualWeights <- as.data.frame((1-(k*forecastedWeightsEqualWeights)))
+forecastedPortfolioReturnsEqualWeightsTransactionCosts[,1] <- forecastedPortfolioReturnsEqualWeightsTransactionCosts[,1] * forecastedWeightsEqualWeights[match(row.names(forecastedPortfolioReturnsEqualWeightsTransactionCosts), row.names(forecastedWeightsEqualWeights)), 1]
+forecastedPortfolioReturnsEqualWeightsTransactionCosts[,1] <- forecastedPortfolioReturnsEqualWeightsTransactionCosts[,1]-1
 
-cumulativeForecastedPortfolioReturns <- cumsum(forecastedPortfolioReturns[, 1])
-cumulativeForecastedPortfolioReturnsEqualWeights <- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
-cumulativeForecastedPortfolioReturnsSP500 <- cumsum(forecastedPortfolioReturnsSP500[, 1])
+# Sum each forecasting windows returns together so we have one value instead of h values.
+forecastedPortfolioReturnsEqualWeightsTransactionCosts <- as.data.frame(rowSums(forecastedPortfolioReturnsEqualWeightsTransactionCosts))
+forecastedPortfolioReturnsEqualWeights <- as.data.frame(rowSums(forecastedPortfolioReturnsEqualWeights))
 
-plot(cumulativeForecastedPortfolioReturns,type="l",col="red", lty=1, main = "Cumulative Returns Over Time", xlab = "Time", ylab = "Cumulative Returns")
-lines(cumulativeForecastedPortfolioReturnsEqualWeights,col="green", lty=1)
-lines(cumulativeForecastedPortfolioReturnsSP500,col="blue", lty=1)
+## S&P 500
+forecastedPortfolioReturnsSP500 <- t(read.csv(file="ForecastedPRSP500.csv", header=TRUE, sep=","))
 
+### Cumulative Forecasted Values to be Graphed
+cumulativeForecastedPortfolioReturns <- ts(cumsum(forecastedPortfolioReturns[, 1]))
+cumulativeForecastedPortfolioReturnsTransactionCosts <- ts(cumsum(forecastedPortfolioReturnsTransactionCosts[, 1]))
+cumulativeForecastedPortfolioReturnsEqualWeights <- ts(cumsum(forecastedPortfolioReturnsEqualWeights[, 1]))
+cumulativeForecastedPortfolioReturnsEqualWeightsTransactionCosts <- ts(cumsum(forecastedPortfolioReturnsEqualWeightsTransactionCosts[, 1]))
+cumulativeForecastedPortfolioReturnsSP500 <- ts(cumsum(forecastedPortfolioReturnsSP500[, 1]))
 
+## Plot
 
-# forecastedWeights <- t(read.csv(file="ForecastedWOptimized.csv", header=TRUE, sep=","))
-# forecastedWeights[, 1]  <- as.numeric(forecastedWeights[, 1])
-# forecastedPortfolioReturns <- 1+forecastedPortfolioReturns
-# forecastedWeights <- (1-(k*forecastedWeights))
-# forecastedPortfolioReturns <- (1-(forecastedWeights*forecastedPortfolioReturns))
-# 
-# forecastedWeightsEqualWeights <- t(read.csv(file="ForecastedWEqualWeights.csv", header=TRUE, sep=","))
-# forecastedWeightsEqualWeights[, 1]  <- as.numeric(forecastedWeightsEqualWeights[, 1])
-# forecastedPortfolioReturnsEqualWeights <- 1+forecastedPortfolioReturnsEqualWeights
-# forecastedWeightsEqualWeights <- (1-(k*forecastedWeightsEqualWeights))
-# forecastedPortfolioReturnsEqualWeights <- (1-(forecastedWeightsEqualWeights*forecastedPortfolioReturnsEqualWeights))
-# 
-# cumulativeForecastedPortfolioReturns <- cumsum(forecastedPortfolioReturns[, 1])
-# cumulativeForecastedPortfolioReturnsEqualWeights <- cumsum(forecastedPortfolioReturnsEqualWeights[, 1])
-# cumulativeForecastedPortfolioReturnsSP500 <- cumsum(forecastedPortfolioReturnsSP500[, 1])
-# 
-# plot(cumulativeForecastedPortfolioReturns,type="l",col="red", lty=1, main = "Cumulative Returns Over Time (Transaction Consts)", xlab = "Time", ylab = "Cumulative Returns")
-# lines(cumulativeForecastedPortfolioReturnsEqualWeights,col="green", lty=1)
-# lines(cumulativeForecastedPortfolioReturnsSP500,col="blue", lty=1)
-# 
-# legend("topleft", legend=c("Forecasted Portfolio (Optimized)", "Forecasted Portfolio (Equal Weights)", "S&P 500"),
-#        col=c("red","green","blue"), lty=1, cex=1,bty="n")
-```
+finalPlot <- ts.plot(cumulativeForecastedPortfolioReturns, cumulativeForecastedPortfolioReturnsTransactionCosts, cumulativeForecastedPortfolioReturnsEqualWeights, cumulativeForecastedPortfolioReturnsEqualWeightsTransactionCosts, cumulativeForecastedPortfolioReturnsSP500, gpars=list(col=c("red","orange","blue","green","black")))
 
-# Mean, Volatilty, Sharpe Ratio, Sortino Ratio, Maximum Drawdown, Turnover
-```{r eval=FALSE}
-options(scipen = 999)
-setwd("C:\\Users\\jessm\\OneDrive\\Documents\\Columbia University\\Summer 2019\\GR5261 - Statistical Methods in Finance\\Take Home Project\\Final Data Files")
+legend("topleft", legend=c("Optimized", "Optimized (Transaction Costs)", "Equal Weights", "Equal Weights (Transaction Costs)", "S&P 500"),
+       col=c("red","orange","blue","green","black"), lty=1, cex=1,bty="n")
 
-forecastedPortfolioReturns <- t(read.csv(file="TESTForecastedPortfolioReturns.csv", header=TRUE, sep=","))
-forecastedPortfolioReturns[, 1]  <- as.numeric(forecastedPortfolioReturns[, 1])
-
-forecastedPortfolioReturnsEqualWeights <- t(read.csv(file="TESTForecastedPortfolioReturnsEqualWeights.csv", header=TRUE, sep=","))
-forecastedPortfolioReturnsEqualWeights[, 1]  <- as.numeric(forecastedPortfolioReturnsEqualWeights[, 1])
-
-forecastedPortfolioReturnsSP500 <- t(read.csv(file="TESTForecastedPortfolioReturnsSP500.csv", header=TRUE, sep=","))
-forecastedPortfolioReturnsSP500[, 1]  <- as.numeric(forecastedPortfolioReturnsSP500[, 1])
+## Mean, Volatilty, Sharpe Ratio, Sortino Ratio, Maximum Drawdown, Turnover
 
 forecastedPortfolioReturnsTS <- ts(forecastedPortfolioReturns)
+forecastedPortfolioReturnsTransactionCostsTS <- ts(forecastedPortfolioReturnsTransactionCosts)
 forecastedPortfolioReturnsEqualWeightsTS <- ts(forecastedPortfolioReturnsEqualWeights)
+forecastedPortfolioReturnsEqualWeightsTransactionCostsTS <- ts(forecastedPortfolioReturnsEqualWeightsTransactionCosts)
 forecastedPortfolioReturnsSP500TS <- ts(forecastedPortfolioReturnsSP500)
 
+# Mean
+meanForecastedPortfolioReturns <- mean(forecastedPortfolioReturns[,1])
+meanForecastedPortfolioReturnsTransactionCosts <- mean(forecastedPortfolioReturnsTransactionCosts[,1])
+meanForecastedPortfolioReturnsEqualWeights <- mean(forecastedPortfolioReturnsEqualWeights[,1])
+meanForecastedPortfolioReturnsEqualWeightsTransactionCosts <- mean(forecastedPortfolioReturnsEqualWeightsTransactionCosts[,1])
+meanForecastedPortfolioReturnsSP500 <- mean(forecastedPortfolioReturnsSP500[,1])
 
-#Mean Returns
-meanForecastedPortfolioReturns <- mean(forecastedPortfolioReturns)
-meanForecastedPortfolioReturnsEqualWeights <- mean(forecastedPortfolioReturnsEqualWeights)
-meanForecastedPortfolioReturnsSP500 <- mean(forecastedPortfolioReturnsSP500)
+meanForecastedPortfolioReturns
+meanForecastedPortfolioReturnsTransactionCosts
+meanForecastedPortfolioReturnsEqualWeights
+meanForecastedPortfolioReturnsEqualWeightsTransactionCosts
+meanForecastedPortfolioReturnsSP500
 
-print(meanForecastedPortfolioReturns)
-print(meanForecastedPortfolioReturnsEqualWeights)
-print(meanForecastedPortfolioReturnsSP500)
+# Volatility
+sdForecastedPortfolioReturns <- sd(forecastedPortfolioReturns[,1])
+sdForecastedPortfolioReturnsTransactionCosts <- sd(forecastedPortfolioReturnsTransactionCosts[,1])
+sdForecastedPortfolioReturnsEqualWeights <- sd(forecastedPortfolioReturnsEqualWeights[,1])
+sdForecastedPortfolioReturnsEqualWeightsTransactionCosts <- sd(forecastedPortfolioReturnsEqualWeightsTransactionCosts[,1])
+sdForecastedPortfolioReturnsSP500 <- sd(forecastedPortfolioReturnsSP500[,1])
 
-#Volatility
-sdForecastedPortfolioReturns <- sd(forecastedPortfolioReturns)
-sdForecastedPortfolioReturnsEqualWeights <- sd(forecastedPortfolioReturnsEqualWeights)
-sdForecastedPortfolioReturnsSP500 <- sd(forecastedPortfolioReturnsSP500)
+sdForecastedPortfolioReturns
+sdForecastedPortfolioReturnsTransactionCosts
+sdForecastedPortfolioReturnsEqualWeights
+sdForecastedPortfolioReturnsEqualWeightsTransactionCosts
+sdForecastedPortfolioReturnsSP500
 
-print(sdForecastedPortfolioReturns)
-print(sdForecastedPortfolioReturnsEqualWeights)
-print(sdForecastedPortfolioReturnsSP500)
-
-#Sharpe Ratios
+# Sharpe Ratio
 sharpeRatioForecastedPortfolioReturns <- SharpeRatio(forecastedPortfolioReturnsTS, Rf = 0, FUN="StdDev")
+sharpeRatioForecastedPortfolioReturnsTransactionCosts <- SharpeRatio(forecastedPortfolioReturnsTransactionCostsTS, Rf = 0, FUN="StdDev")
 sharpeRatioForecastedPortfolioReturnsEqualWeights <- SharpeRatio(forecastedPortfolioReturnsEqualWeightsTS, Rf = 0, FUN="StdDev")
+sharpeRatioForecastedPortfolioReturnsEqualWeightsTransactionCosts <- SharpeRatio(forecastedPortfolioReturnsEqualWeightsTransactionCostsTS, Rf = 0, FUN="StdDev")
 sharpeRatioForecastedPortfolioReturnsSP500 <- SharpeRatio(forecastedPortfolioReturnsSP500TS, Rf = 0, FUN="StdDev")
 
-print(sharpeRatioForecastedPortfolioReturns)
-print(sharpeRatioForecastedPortfolioReturnsEqualWeights)
-print(sharpeRatioForecastedPortfolioReturnsSP500)
+sharpeRatioForecastedPortfolioReturns
+sharpeRatioForecastedPortfolioReturnsTransactionCosts
+sharpeRatioForecastedPortfolioReturnsEqualWeights
+sharpeRatioForecastedPortfolioReturnsEqualWeightsTransactionCosts
+sharpeRatioForecastedPortfolioReturnsSP500
 
-#Sortino Ratios
+# Sortino Ratio
 sortinoRatioForecastedPortfolioReturns <- SortinoRatio(forecastedPortfolioReturnsTS, MAR = 0)
+sortinoRatioForecastedPortfolioReturnsTransactionCosts <- SortinoRatio(forecastedPortfolioReturnsTransactionCostsTS, MAR = 0)
 sortinoRatioForecastedPortfolioReturnsEqualWeights <- SortinoRatio(forecastedPortfolioReturnsEqualWeightsTS, MAR = 0)
+sortinoRatioForecastedPortfolioReturnsEqualWeightsTransactionCosts <- SortinoRatio(forecastedPortfolioReturnsEqualWeightsTransactionCostsTS, MAR = 0)
 sortinoRatioForecastedPortfolioReturnsSP500 <- SortinoRatio(forecastedPortfolioReturnsSP500TS, MAR = 0)
 
-print(sortinoRatioForecastedPortfolioReturns)
-print(sortinoRatioForecastedPortfolioReturnsEqualWeights)
-print(sortinoRatioForecastedPortfolioReturnsSP500)
+sortinoRatioForecastedPortfolioReturns
+sortinoRatioForecastedPortfolioReturnsTransactionCosts
+sortinoRatioForecastedPortfolioReturnsEqualWeights
+sortinoRatioForecastedPortfolioReturnsEqualWeightsTransactionCosts
+sortinoRatioForecastedPortfolioReturnsSP500
 
 #Maximum Drawdown
 maximumDrawdownForecastedPortfolioReturns <- maxDrawdown(forecastedPortfolioReturnsTS)
+maximumDrawdownForecastedPortfolioReturnsTransactionCosts <- maxDrawdown(forecastedPortfolioReturnsTransactionCostsTS)
 maximumDrawdownForecastedPortfolioReturnsEqualWeights <- maxDrawdown(forecastedPortfolioReturnsEqualWeightsTS)
+maximumDrawdownForecastedPortfolioReturnsEqualWeightsTransactionCosts <- maxDrawdown(forecastedPortfolioReturnsEqualWeightsTransactionCostsTS)
 maximumDrawdownForecastedPortfolioReturnsSP500 <- maxDrawdown(forecastedPortfolioReturnsSP500TS)
 
-print(maximumDrawdownForecastedPortfolioReturns)
-print(maximumDrawdownForecastedPortfolioReturnsEqualWeights)
-print(maximumDrawdownForecastedPortfolioReturnsSP500)
+maximumDrawdownForecastedPortfolioReturns
+maximumDrawdownForecastedPortfolioReturnsTransactionCosts
+maximumDrawdownForecastedPortfolioReturnsEqualWeights
+maximumDrawdownForecastedPortfolioReturnsEqualWeightsTransactionCosts
+maximumDrawdownForecastedPortfolioReturnsSP500
 
-stocksUsedForEachForecastedPeriod <- read.csv(file="StocksUsedForEachForecastedPeriod.csv", header=TRUE, sep=",")
+#Turnover
+forecastedWeightsForTurnoverCalculations <- ts(forecastedWeightsForTurnoverCalculations)
+turnoverOptimized <- mean(as.data.frame(abs(percentChange(forecastedWeightsForTurnoverCalculations) / 100))[-1,1])
 
-rowIndexes <- seq(1:nrow(stocksUsedForEachForecastedPeriod)-1)
+forecastedWeightsEqualWeightsForTurnoverCalculations <- ts(forecastedWeightsEqualWeightsForTurnoverCalculations)
+turnoverEqualWeights <- mean(as.data.frame(abs(percentChange(forecastedWeightsEqualWeightsForTurnoverCalculations) / 100))[-1,1])
 
-listOfTurnoverRates <- list()
-for (rowIndex in rowIndexes)
-{
-  currentRowTransposed <- as.vector(t(stocksUsedForEachForecastedPeriod[rowIndex,]))
-  nextRowTransposed <- as.vector(t(stocksUsedForEachForecastedPeriod[rowIndex+1,]))
-  
-  uniqueStocksBetweenTheTwoRows <- as.data.frame(currentRowTransposed[!(currentRowTransposed %in% nextRowTransposed)])
-  
-  numberOfDifferentStocks <- nrow(uniqueStocksBetweenTheTwoRows)
-  turnoverRate <- numberOfDifferentStocks/30
-  listOfTurnoverRates[rowIndex] <- turnoverRate
-}
-
-turnoverRates <- dplyr::bind_cols(listOfTurnoverRates)
-turnoverRates <- as.data.frame(turnoverRates)
-
-averageTurnoverRate <- mean(as.numeric(turnoverRates))
-
-averageTurnoverRate
+turnoverOptimized
+turnoverEqualWeights
 ```
